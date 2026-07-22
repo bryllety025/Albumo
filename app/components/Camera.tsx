@@ -21,6 +21,7 @@ const MAX_ZOOM = 3;
 
 type Stage = "idle" | "prompt" | "live" | "preview";
 type Source = "camera" | "library" | null;
+type SaveStatus = "idle" | "saving" | "success" | "error";
 
 function buildFilename(ext: string) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -40,7 +41,10 @@ export default function Camera() {
   const [zoom, setZoom] = useState(MIN_ZOOM);
   const [filterIndex, setFilterIndex] = useState(0);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [previewExt, setPreviewExt] = useState("jpg");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -56,7 +60,15 @@ export default function Camera() {
     setFilterIndex(0);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
+        video: {
+          facingMode: "environment",
+          // "ideal" (not "exact") so the browser targets the camera's
+          // maximum supported resolution instead of defaulting to a low
+          // fallback (commonly 640x480) when no size is requested at all,
+          // while still degrading gracefully on cameras that can't do 4K.
+          width: { ideal: 4096 },
+          height: { ideal: 2160 },
+        },
         audio: false,
       });
       streamRef.current = stream;
@@ -143,10 +155,13 @@ export default function Camera() {
         selected.type.split("/")[1] ||
         "jpg";
       setPreviewExt(ext);
+      setPreviewBlob(selected);
       setPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return URL.createObjectURL(selected);
       });
+      setSaveStatus("idle");
+      setSaveError(null);
       setSource("library");
       setStage("preview");
     },
@@ -179,10 +194,13 @@ export default function Camera() {
         if (!blob) return;
         stopStream();
         setPreviewExt("jpg");
+        setPreviewBlob(blob);
         setPreviewUrl((prev) => {
           if (prev) URL.revokeObjectURL(prev);
           return URL.createObjectURL(blob);
         });
+        setSaveStatus("idle");
+        setSaveError(null);
         setStage("preview");
       },
       "image/jpeg",
@@ -190,28 +208,54 @@ export default function Camera() {
     );
   }, [zoom, filterIndex, stopStream]);
 
-  const handleRetry = useCallback(() => {
+  const resetPreview = useCallback(() => {
     setPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return null;
     });
+    setPreviewBlob(null);
+    setSaveStatus("idle");
+    setSaveError(null);
+  }, []);
+
+  const handleRetry = useCallback(() => {
+    resetPreview();
     if (source === "camera") {
       openLive();
     } else {
       setStage("idle");
       setSource(null);
     }
-  }, [source, openLive]);
+  }, [source, openLive, resetPreview]);
 
-  const handleSave = useCallback(() => {
-    if (!previewUrl) return;
-    const link = document.createElement("a");
-    link.href = previewUrl;
-    link.download = buildFilename(previewExt);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }, [previewUrl, previewExt]);
+  const handleDone = useCallback(() => {
+    resetPreview();
+    setStage("idle");
+    setSource(null);
+  }, [resetPreview]);
+
+  const handleSave = useCallback(async () => {
+    if (!previewBlob) return;
+    setSaveStatus("saving");
+    setSaveError(null);
+    try {
+      const filename = buildFilename(previewExt);
+      const formData = new FormData();
+      formData.append("file", previewBlob, filename);
+      formData.append("filename", filename);
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error(await res.text());
+      setSaveStatus("success");
+    } catch {
+      setSaveStatus("error");
+      setSaveError("Couldn't save to Google Drive. Check your connection and try again.");
+    }
+  }, [previewBlob, previewExt]);
 
   if (error) {
     return (
@@ -370,20 +414,45 @@ export default function Camera() {
               className="max-h-full max-w-full rounded-lg object-contain"
             />
           </div>
-          <div className="flex gap-4 pb-4">
-            <button
-              onClick={handleRetry}
-              className="rounded-full bg-white/20 px-6 py-3 text-white backdrop-blur transition-colors hover:bg-white/30"
-            >
-              Try again
-            </button>
-            <button
-              onClick={handleSave}
-              className="rounded-full bg-white px-6 py-3 font-medium text-black transition-colors hover:bg-zinc-200"
-            >
-              Save
-            </button>
-          </div>
+          {saveStatus === "success" ? (
+            <div className="flex flex-col items-center gap-4 pb-4">
+              <p className="text-white">Saved to Google Drive!</p>
+              <button
+                onClick={handleDone}
+                className="rounded-full bg-white px-6 py-3 font-medium text-black transition-colors hover:bg-zinc-200"
+              >
+                Take Another
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3 pb-4">
+              {saveStatus === "error" && saveError && (
+                <p className="max-w-sm text-center text-sm text-red-400">
+                  {saveError}
+                </p>
+              )}
+              <div className="flex gap-4">
+                <button
+                  onClick={handleRetry}
+                  disabled={saveStatus === "saving"}
+                  className="rounded-full bg-white/20 px-6 py-3 text-white backdrop-blur transition-colors hover:bg-white/30 disabled:opacity-50"
+                >
+                  Try again
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saveStatus === "saving"}
+                  className="rounded-full bg-white px-6 py-3 font-medium text-black transition-colors hover:bg-zinc-200 disabled:opacity-50"
+                >
+                  {saveStatus === "saving"
+                    ? "Saving..."
+                    : saveStatus === "error"
+                      ? "Retry Save"
+                      : "Save"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </>
