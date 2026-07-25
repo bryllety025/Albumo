@@ -7,7 +7,7 @@ import NotificationToggle from "./components/NotificationToggle";
 export default function Home() {
   return (
     <div className="flex flex-col bg-background text-foreground">
-      <div className="relative h-[50dvh] w-full shrink-0">
+      <div className="relative h-[60dvh] w-full shrink-0 overflow-hidden">
         <Image
           src={heroImage}
           alt="Ellen and Brylle"

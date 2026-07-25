@@ -380,14 +380,14 @@ export default function Camera() {
               onClick={handleTakePhoto}
               className="inline-flex items-center gap-2 rounded-full bg-sage-700 px-6 py-4 text-lg font-medium text-ivory transition-colors hover:bg-sage-900"
             >
-              <CameraIcon size={18} strokeWidth={1.75} />
+              <CameraIcon size={35} strokeWidth={1.75} />
               Take Photo
             </button>
             <button
               onClick={openLibrary}
               className="inline-flex items-center gap-2 rounded-full bg-sage-100 px-6 py-4 text-lg font-medium text-sage-900 transition-colors hover:bg-sage-100/70"
             >
-              <ImageIcon size={18} strokeWidth={1.75} />
+              <ImageIcon size={35} strokeWidth={1.75} />
               Choose Photo
             </button>
           </div>
