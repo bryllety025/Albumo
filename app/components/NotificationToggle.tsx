@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Bell } from "lucide-react";
+import { useEffect, useState } from "react";
 import {
   registerServiceWorker,
   requestNotificationPermission,
@@ -24,23 +23,27 @@ export default function NotificationToggle() {
       setStatus("ios-not-installed");
       return;
     }
-    if (Notification.permission === "granted") setStatus("granted");
-    else if (Notification.permission === "denied") setStatus("denied");
-  }, []);
-
-  const handleClick = useCallback(async () => {
-    await registerServiceWorker();
-    const granted = await requestNotificationPermission();
-    if (granted) {
+    if (Notification.permission === "granted") {
       setStatus("granted");
-      const remaining = Math.max(PHOTO_LIMIT - getStoredCount(), 0);
-      updatePhotoCountNotification(remaining);
-    } else {
-      setStatus("denied");
+      return;
     }
-  }, []);
+    if (Notification.permission === "denied") {
+      setStatus("denied");
+      return;
+    }
 
-  if (status === "unsupported" || status === "granted") return null;
+    (async () => {
+      await registerServiceWorker();
+      const granted = await requestNotificationPermission();
+      if (granted) {
+        setStatus("granted");
+        const remaining = Math.max(PHOTO_LIMIT - getStoredCount(), 0);
+        updatePhotoCountNotification(remaining);
+      } else {
+        setStatus("denied");
+      }
+    })();
+  }, []);
 
   if (status === "ios-not-installed") {
     return (
@@ -51,14 +54,5 @@ export default function NotificationToggle() {
     );
   }
 
-  return (
-    <button
-      onClick={handleClick}
-      disabled={status === "denied"}
-      className="inline-flex items-center gap-2 rounded-full bg-sage-100 px-5 py-2.5 text-sm font-medium text-sage-900 transition-colors hover:bg-sage-100/70 disabled:opacity-50"
-    >
-      <Bell size={18} strokeWidth={1.75} />
-      {status === "denied" ? "Notifications blocked" : "Get Lock-Screen Updates"}
-    </button>
-  );
+  return null;
 }

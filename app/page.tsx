@@ -6,7 +6,7 @@ import NotificationToggle from "./components/NotificationToggle";
 
 export default function Home() {
   return (
-    <div className="flex h-full flex-1 flex-col bg-background text-foreground">
+    <div className="flex flex-col bg-background text-foreground">
       <div className="relative h-[50dvh] w-full shrink-0">
         <Image
           src={heroImage}
