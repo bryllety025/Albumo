@@ -1,6 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Camera as CameraIcon,
+  Image as ImageIcon,
+  X,
+  UploadCloud,
+  RotateCcw,
+  ArrowLeft,
+} from "lucide-react";
+import {
+  PHOTO_LIMIT,
+  getStoredCount,
+  incrementStoredCount,
+  getStoredPhotos,
+  addStoredPhoto,
+  createThumbnail,
+} from "@/lib/photoStorage";
+import PhotoGallery from "./PhotoGallery";
+import { updatePhotoCountNotification } from "@/lib/notifications";
 
 type FilterOption = {
   name: string;
@@ -45,6 +63,18 @@ export default function Camera() {
   const [previewExt, setPreviewExt] = useState("jpg");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [photoCount, setPhotoCount] = useState<number | null>(null);
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+
+  useEffect(() => {
+    setPhotoCount(getStoredCount());
+    setPhotos(getStoredPhotos());
+  }, []);
+
+  const remaining =
+    photoCount === null ? PHOTO_LIMIT : Math.max(PHOTO_LIMIT - photoCount, 0);
+  const limitReached = photoCount !== null && remaining <= 0;
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -251,22 +281,31 @@ export default function Camera() {
 
       if (!res.ok) throw new Error(await res.text());
       setSaveStatus("success");
+      const next = incrementStoredCount();
+      setPhotoCount(next);
+      updatePhotoCountNotification(Math.max(PHOTO_LIMIT - next, 0));
+      if (previewUrl) {
+        createThumbnail(previewUrl, 640, 0.72).then((thumb) => {
+          setPhotos(addStoredPhoto(thumb));
+        });
+      }
     } catch {
       setSaveStatus("error");
       setSaveError("Couldn't save to Google Drive. Check your connection and try again.");
     }
-  }, [previewBlob, previewExt]);
+  }, [previewBlob, previewExt, previewUrl]);
 
   if (error) {
     return (
-      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-black p-8 text-center text-white">
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-background p-8 text-center text-foreground">
         <p className="max-w-sm">{error}</p>
         {permissionDenied ? (
           <>
             <button
               onClick={handleTakePhoto}
-              className="rounded-full bg-white px-6 py-3 font-medium text-black transition-colors hover:bg-zinc-200"
+              className="inline-flex items-center gap-2 rounded-full bg-sage-700 px-6 py-3 font-medium text-ivory transition-colors hover:bg-sage-900"
             >
+              <RotateCcw size={18} strokeWidth={1.75} />
               Try Again
             </button>
             <button
@@ -274,7 +313,7 @@ export default function Camera() {
                 setError(null);
                 setPermissionDenied(false);
               }}
-              className="text-sm text-white/70 underline underline-offset-2"
+              className="text-sm text-sage-600 underline underline-offset-2"
             >
               Or choose a photo instead
             </button>
@@ -282,8 +321,9 @@ export default function Camera() {
         ) : (
           <button
             onClick={() => setError(null)}
-            className="rounded-full bg-white px-6 py-3 font-medium text-black transition-colors hover:bg-zinc-200"
+            className="inline-flex items-center gap-2 rounded-full bg-sage-700 px-6 py-3 font-medium text-ivory transition-colors hover:bg-sage-900"
           >
+            <ArrowLeft size={18} strokeWidth={1.75} />
             Back
           </button>
         )}
@@ -302,49 +342,85 @@ export default function Camera() {
       />
       <canvas ref={canvasRef} className="hidden" />
 
-      {stage === "idle" && (
-        <div className="flex gap-4">
-          <button
-            onClick={handleTakePhoto}
-            className="rounded-full bg-white px-6 py-4 text-lg font-medium text-black transition-colors hover:bg-zinc-200"
-          >
-            Take Photo
-          </button>
-          <button
-            onClick={openLibrary}
-            className="rounded-full bg-white/20 px-6 py-4 text-lg font-medium text-white backdrop-blur transition-colors hover:bg-white/30"
-          >
-            Choose Photo
-          </button>
+      {photoCount !== null && (
+        <div className="fixed bottom-4 left-4 z-[60] rounded-full bg-sage-900/80 px-3 py-1.5 text-xs font-medium text-ivory backdrop-blur">
+          {remaining > 0 ? `${remaining} photos left` : "Limit reached"}
         </div>
       )}
+      {photos[0] && (
+        <button
+          onClick={() => setIsGalleryOpen(true)}
+          aria-label="View your photos"
+          className="fixed bottom-4 right-4 z-[60] h-14 w-14 overflow-hidden rounded-lg border-2 border-ivory/80 shadow-lg"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={photos[0]}
+            alt="Last saved photo"
+            className="h-full w-full object-cover"
+          />
+        </button>
+      )}
+      {isGalleryOpen && (
+        <PhotoGallery photos={photos} onClose={() => setIsGalleryOpen(false)} />
+      )}
+
+      {stage === "idle" &&
+        (limitReached ? (
+          <div className="max-w-sm rounded-2xl bg-sage-100 px-6 py-5 text-center text-sage-900">
+            <p className="font-medium">You&apos;ve shared 20 photos — thank you!</p>
+            <p className="mt-1 text-sm text-sage-700">
+              That&apos;s the limit per device for tonight. Ask a friend to
+              snap the next one!
+            </p>
+          </div>
+        ) : (
+          <div className="flex gap-4">
+            <button
+              onClick={handleTakePhoto}
+              className="inline-flex items-center gap-2 rounded-full bg-sage-700 px-6 py-4 text-lg font-medium text-ivory transition-colors hover:bg-sage-900"
+            >
+              <CameraIcon size={18} strokeWidth={1.75} />
+              Take Photo
+            </button>
+            <button
+              onClick={openLibrary}
+              className="inline-flex items-center gap-2 rounded-full bg-sage-100 px-6 py-4 text-lg font-medium text-sage-900 transition-colors hover:bg-sage-100/70"
+            >
+              <ImageIcon size={18} strokeWidth={1.75} />
+              Choose Photo
+            </button>
+          </div>
+        ))}
 
       {stage === "prompt" && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-black p-8 text-center text-white">
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-background p-8 text-center text-foreground">
           <p className="max-w-sm text-lg">
             Wedding Photos needs access to your camera to take a photo.
           </p>
-          <p className="max-w-sm text-sm text-white/70">
+          <p className="max-w-sm text-sm text-sage-600">
             Tap Allow below, then choose Allow when your browser asks for
             permission.
           </p>
           <button
             onClick={openLive}
-            className="rounded-full bg-white px-8 py-3 font-medium text-black transition-colors hover:bg-zinc-200"
+            className="inline-flex items-center gap-2 rounded-full bg-sage-700 px-8 py-3 font-medium text-ivory transition-colors hover:bg-sage-900"
           >
+            <CameraIcon size={18} strokeWidth={1.75} />
             Allow Camera
           </button>
           <button
             onClick={() => setStage("idle")}
-            className="text-sm text-white/70 underline underline-offset-2"
+            className="inline-flex items-center gap-1 text-sm text-sage-600 underline underline-offset-2"
           >
+            <X size={14} strokeWidth={1.75} />
             Cancel
           </button>
         </div>
       )}
 
       {stage === "live" && (
-        <div className="fixed inset-0 z-50 overflow-hidden bg-black">
+        <div className="fixed inset-0 z-50 overflow-hidden bg-camera-bg">
           <video
             ref={videoRef}
             autoPlay
@@ -359,8 +435,9 @@ export default function Camera() {
 
           <button
             onClick={closeLive}
-            className="absolute left-4 top-4 rounded-full bg-black/40 px-4 py-2 text-sm text-white backdrop-blur"
+            className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-camera-bg/60 px-4 py-2 text-sm text-ivory backdrop-blur"
           >
+            <X size={16} strokeWidth={1.75} />
             Cancel
           </button>
 
@@ -372,8 +449,8 @@ export default function Camera() {
                   onClick={() => setFilterIndex(i)}
                   className={`shrink-0 rounded-full px-4 py-1.5 text-sm transition-colors ${
                     i === filterIndex
-                      ? "bg-white text-black"
-                      : "bg-white/20 text-white backdrop-blur hover:bg-white/30"
+                      ? "bg-sage-500 text-ivory"
+                      : "bg-ivory/15 text-ivory backdrop-blur hover:bg-ivory/25"
                   }`}
                 >
                   {f.name}
@@ -381,7 +458,7 @@ export default function Camera() {
               ))}
             </div>
 
-            <div className="flex w-64 items-center gap-3 text-white">
+            <div className="flex w-64 items-center gap-3 text-ivory">
               <span className="text-sm">{MIN_ZOOM}x</span>
               <input
                 type="range"
@@ -390,7 +467,7 @@ export default function Camera() {
                 step={0.1}
                 value={zoom}
                 onChange={(e) => setZoom(parseFloat(e.target.value))}
-                className="flex-1 accent-white"
+                className="flex-1 accent-sage-300"
               />
               <span className="text-sm">{MAX_ZOOM}x</span>
             </div>
@@ -398,14 +475,14 @@ export default function Camera() {
             <button
               onClick={handleCapture}
               aria-label="Take photo"
-              className="h-16 w-16 rounded-full border-4 border-white bg-white/30 transition-colors hover:bg-white/50"
+              className="h-16 w-16 rounded-full border-4 border-ivory bg-ivory/30 transition-colors hover:bg-ivory/50"
             />
           </div>
         </div>
       )}
 
       {stage === "preview" && previewUrl && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-black p-6">
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-camera-bg p-6">
           <div className="flex min-h-0 w-full flex-1 items-center justify-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -416,11 +493,12 @@ export default function Camera() {
           </div>
           {saveStatus === "success" ? (
             <div className="flex flex-col items-center gap-4 pb-4">
-              <p className="text-white">Saved to Google Drive!</p>
+              <p className="text-ivory">Saved to Google Drive!</p>
               <button
                 onClick={handleDone}
-                className="rounded-full bg-white px-6 py-3 font-medium text-black transition-colors hover:bg-zinc-200"
+                className="inline-flex items-center gap-2 rounded-full bg-sage-700 px-6 py-3 font-medium text-ivory transition-colors hover:bg-sage-900"
               >
+                <CameraIcon size={18} strokeWidth={1.75} />
                 Take Another
               </button>
             </div>
@@ -435,20 +513,29 @@ export default function Camera() {
                 <button
                   onClick={handleRetry}
                   disabled={saveStatus === "saving"}
-                  className="rounded-full bg-white/20 px-6 py-3 text-white backdrop-blur transition-colors hover:bg-white/30 disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-full bg-ivory/15 px-6 py-3 text-ivory backdrop-blur transition-colors hover:bg-ivory/25 disabled:opacity-50"
                 >
+                  <RotateCcw size={18} strokeWidth={1.75} />
                   Try again
                 </button>
                 <button
                   onClick={handleSave}
                   disabled={saveStatus === "saving"}
-                  className="rounded-full bg-white px-6 py-3 font-medium text-black transition-colors hover:bg-zinc-200 disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-full bg-sage-700 px-6 py-3 font-medium text-ivory transition-colors hover:bg-sage-900 disabled:opacity-50"
                 >
-                  {saveStatus === "saving"
-                    ? "Saving..."
-                    : saveStatus === "error"
-                      ? "Retry Save"
-                      : "Save"}
+                  {saveStatus === "saving" ? (
+                    "Saving..."
+                  ) : saveStatus === "error" ? (
+                    <>
+                      <RotateCcw size={18} strokeWidth={1.75} />
+                      Retry Save
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud size={18} strokeWidth={1.75} />
+                      Save
+                    </>
+                  )}
                 </button>
               </div>
             </div>

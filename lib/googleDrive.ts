@@ -66,6 +66,14 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
+const DRIVE_FOLDER_URL_BASE = "https://drive.google.com/drive/folders/";
+
+export async function getDriveFolderUrl(): Promise<string> {
+  const accessToken = await getAccessToken();
+  const folderId = await findOrCreateFolder(accessToken);
+  return `${DRIVE_FOLDER_URL_BASE}${folderId}`;
+}
+
 export async function uploadToDrive(
   bytes: Buffer,
   filename: string,
