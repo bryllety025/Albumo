@@ -58,6 +58,13 @@ const BURST_COUNT = 5;
 const BURST_INTERVAL_MS = 250;
 const FLASH_DURATION_MS = 200;
 
+function composeFilterCss(filterIndex: number, hdrOn: boolean) {
+  const baseFilter = FILTERS[filterIndex].css;
+  const hdrFilter = "contrast(1.15) saturate(1.25) brightness(1.05)";
+  if (baseFilter === "none") return hdrOn ? hdrFilter : "none";
+  return hdrOn ? `${baseFilter} ${hdrFilter}` : baseFilter;
+}
+
 type Stage = "idle" | "prompt" | "live" | "preview";
 type Source = "camera" | "library" | null;
 type SaveStatus = "idle" | "saving" | "success" | "error";
@@ -76,6 +83,7 @@ export default function Camera() {
   const countdownTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const burstTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashHoldTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [stage, setStage] = useState<Stage>("idle");
   const [source, setSource] = useState<Source>(null);
@@ -120,6 +128,7 @@ export default function Camera() {
       if (countdownTimeoutRef.current) clearTimeout(countdownTimeoutRef.current);
       if (burstTimeoutRef.current) clearTimeout(burstTimeoutRef.current);
       if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+      if (flashHoldTimeoutRef.current) clearTimeout(flashHoldTimeoutRef.current);
     };
   }, []);
 
@@ -231,6 +240,7 @@ export default function Camera() {
     if (countdownTimeoutRef.current) clearTimeout(countdownTimeoutRef.current);
     if (burstTimeoutRef.current) clearTimeout(burstTimeoutRef.current);
     if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+    if (flashHoldTimeoutRef.current) clearTimeout(flashHoldTimeoutRef.current);
     setCountdownValue(null);
     setIsCapturing(false);
     setFlashActive(false);
@@ -281,16 +291,7 @@ export default function Camera() {
       const ctx = canvas.getContext("2d");
       if (!ctx) return resolve(null);
 
-      const baseFilter = FILTERS[filterIndex].css;
-      const hdrFilter = "contrast(1.15) saturate(1.25) brightness(1.05)";
-      ctx.filter =
-        baseFilter === "none"
-          ? hdrOn
-            ? hdrFilter
-            : "none"
-          : hdrOn
-          ? `${baseFilter} ${hdrFilter}`
-          : baseFilter;
+      ctx.filter = composeFilterCss(filterIndex, hdrOn);
 
       ctx.save();
       if (facingMode === "user") {
@@ -322,16 +323,35 @@ export default function Camera() {
     }, FLASH_DURATION_MS);
   }, [flashOn]);
 
+  // Waits one paint frame so a just-set state update (e.g. flashActive)
+  // actually commits and renders before we move on.
+  const waitForPaint = useCallback(() => {
+    return new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+  }, []);
+
+  const waitOutFlash = useCallback(() => {
+    if (!flashOn) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      flashHoldTimeoutRef.current = setTimeout(resolve, FLASH_DURATION_MS);
+    });
+  }, [flashOn]);
+
   const runSingleCapture = useCallback(async () => {
     fireFlash();
+    await waitForPaint();
+    if (cancelledRef.current) return;
     const item = await captureFrame();
     if (cancelledRef.current || !item) return;
+    await waitOutFlash();
+    if (cancelledRef.current) return;
     stopStream();
     setPreviewItems([item]);
     setSaveStatus("idle");
     setSaveError(null);
     setStage("preview");
-  }, [fireFlash, captureFrame, stopStream]);
+  }, [fireFlash, waitForPaint, captureFrame, waitOutFlash, stopStream]);
 
   const runBurstCapture = useCallback(async () => {
     setIsCapturing(true);
@@ -342,6 +362,11 @@ export default function Camera() {
         return;
       }
       fireFlash();
+      await waitForPaint();
+      if (cancelledRef.current) {
+        setIsCapturing(false);
+        return;
+      }
       const item = await captureFrame();
       if (cancelledRef.current) {
         setIsCapturing(false);
@@ -352,6 +377,12 @@ export default function Camera() {
         await new Promise<void>((resolve) => {
           burstTimeoutRef.current = setTimeout(resolve, BURST_INTERVAL_MS);
         });
+      } else {
+        await waitOutFlash();
+      }
+      if (cancelledRef.current) {
+        setIsCapturing(false);
+        return;
       }
     }
     if (cancelledRef.current) return;
@@ -361,7 +392,7 @@ export default function Camera() {
     setSaveStatus("idle");
     setSaveError(null);
     setStage("preview");
-  }, [fireFlash, captureFrame, stopStream]);
+  }, [fireFlash, waitForPaint, captureFrame, waitOutFlash, stopStream]);
 
   const cancelCountdown = useCallback(() => {
     if (countdownTimeoutRef.current) clearTimeout(countdownTimeoutRef.current);
@@ -434,7 +465,7 @@ export default function Camera() {
   const handleRetry = useCallback(() => {
     resetPreview();
     if (source === "camera") {
-      openLive("environment", { resetSettings: true });
+      openLive();
     } else {
       setStage("idle");
       setSource(null);
@@ -628,7 +659,7 @@ export default function Camera() {
             playsInline
             muted
             style={{
-              filter: FILTERS[filterIndex].css,
+              filter: composeFilterCss(filterIndex, hdrOn),
               transform: `scale(${zoom})${facingMode === "user" ? " scaleX(-1)" : ""}`,
             }}
             className="h-full w-full object-cover"
