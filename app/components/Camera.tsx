@@ -25,18 +25,54 @@ import {
 import PhotoGallery from "./PhotoGallery";
 import { updatePhotoCountNotification } from "@/lib/notifications";
 
+// Filters are stored as structured ops rather than CSS strings so the live
+// preview (CSS on the <video>) and the captured photo (a colour matrix applied
+// to the canvas pixels) are always derived from the same source and can't drift.
+type FilterOp =
+  | {
+      fn: "grayscale" | "sepia" | "saturate" | "brightness" | "contrast";
+      value: number;
+    }
+  | { fn: "hue-rotate"; deg: number };
+
 type FilterOption = {
   name: string;
-  css: string;
+  ops: FilterOp[];
 };
 
 const FILTERS: FilterOption[] = [
-  { name: "Normal", css: "none" },
-  { name: "Mono", css: "grayscale(1)" },
-  { name: "Sepia", css: "sepia(0.8)" },
-  { name: "Vivid", css: "saturate(1.6) contrast(1.15)" },
-  { name: "Cool", css: "saturate(1.2) hue-rotate(15deg) brightness(1.05)" },
-  { name: "Warm", css: "sepia(0.3) saturate(1.3) brightness(1.05)" },
+  { name: "Normal", ops: [] },
+  { name: "Mono", ops: [{ fn: "grayscale", value: 1 }] },
+  { name: "Sepia", ops: [{ fn: "sepia", value: 0.8 }] },
+  {
+    name: "Vivid",
+    ops: [
+      { fn: "saturate", value: 1.6 },
+      { fn: "contrast", value: 1.15 },
+    ],
+  },
+  {
+    name: "Cool",
+    ops: [
+      { fn: "saturate", value: 1.2 },
+      { fn: "hue-rotate", deg: 15 },
+      { fn: "brightness", value: 1.05 },
+    ],
+  },
+  {
+    name: "Warm",
+    ops: [
+      { fn: "sepia", value: 0.3 },
+      { fn: "saturate", value: 1.3 },
+      { fn: "brightness", value: 1.05 },
+    ],
+  },
+];
+
+const HDR_OPS: FilterOp[] = [
+  { fn: "contrast", value: 1.15 },
+  { fn: "saturate", value: 1.25 },
+  { fn: "brightness", value: 1.05 },
 ];
 
 const MIN_ZOOM = 1;
@@ -57,12 +93,148 @@ type PreviewItem = {
 const BURST_COUNT = 5;
 const BURST_INTERVAL_MS = 250;
 const FLASH_DURATION_MS = 200;
+// Give auto-exposure a moment to react to the torch before capturing, otherwise
+// the shot is taken before the light actually registers.
+const TORCH_WARMUP_MS = 350;
 
-function composeFilterCss(filterIndex: number, hdrOn: boolean) {
-  const baseFilter = FILTERS[filterIndex].css;
-  const hdrFilter = "contrast(1.15) saturate(1.25) brightness(1.05)";
-  if (baseFilter === "none") return hdrOn ? hdrFilter : "none";
-  return hdrOn ? `${baseFilter} ${hdrFilter}` : baseFilter;
+// `torch` isn't in lib.dom's media types yet.
+type TorchCapabilities = MediaTrackCapabilities & { torch?: boolean };
+type TorchConstraintSet = MediaTrackConstraintSet & { torch?: boolean };
+
+function composeFilterOps(filterIndex: number, hdrOn: boolean): FilterOp[] {
+  const base = FILTERS[filterIndex].ops;
+  return hdrOn ? [...base, ...HDR_OPS] : base;
+}
+
+function opsToCss(ops: FilterOp[]) {
+  if (ops.length === 0) return "none";
+  return ops
+    .map((op) =>
+      op.fn === "hue-rotate" ? `hue-rotate(${op.deg}deg)` : `${op.fn}(${op.value})`
+    )
+    .join(" ");
+}
+
+// Colour matrices per the Filter Effects spec. Each op becomes a 3x3 RGB matrix
+// plus a per-channel offset (kept in 0-1 units); alpha is never touched.
+type ColorMatrix = { m: number[]; o: number[] };
+
+const IDENTITY_MATRIX: ColorMatrix = {
+  m: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+  o: [0, 0, 0],
+};
+
+function saturateMatrix(s: number): ColorMatrix {
+  return {
+    m: [
+      0.213 + 0.787 * s, 0.715 - 0.715 * s, 0.072 - 0.072 * s,
+      0.213 - 0.213 * s, 0.715 + 0.285 * s, 0.072 - 0.072 * s,
+      0.213 - 0.213 * s, 0.715 - 0.715 * s, 0.072 + 0.928 * s,
+    ],
+    o: [0, 0, 0],
+  };
+}
+
+function sepiaMatrix(a: number): ColorMatrix {
+  const i = 1 - a;
+  return {
+    m: [
+      0.393 + 0.607 * i, 0.769 - 0.769 * i, 0.189 - 0.189 * i,
+      0.349 - 0.349 * i, 0.686 + 0.314 * i, 0.168 - 0.168 * i,
+      0.272 - 0.272 * i, 0.534 - 0.534 * i, 0.131 + 0.869 * i,
+    ],
+    o: [0, 0, 0],
+  };
+}
+
+function hueRotateMatrix(deg: number): ColorMatrix {
+  const rad = (deg * Math.PI) / 180;
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  return {
+    m: [
+      0.213 + c * 0.787 - s * 0.213,
+      0.715 - c * 0.715 - s * 0.715,
+      0.072 - c * 0.072 + s * 0.928,
+      0.213 - c * 0.213 + s * 0.143,
+      0.715 + c * 0.285 + s * 0.14,
+      0.072 - c * 0.072 - s * 0.283,
+      0.213 - c * 0.213 - s * 0.787,
+      0.715 - c * 0.715 + s * 0.715,
+      0.072 + c * 0.928 + s * 0.072,
+    ],
+    o: [0, 0, 0],
+  };
+}
+
+function opToMatrix(op: FilterOp): ColorMatrix {
+  switch (op.fn) {
+    // grayscale(a) is defined as saturate(1 - a).
+    case "grayscale":
+      return saturateMatrix(1 - op.value);
+    case "sepia":
+      return sepiaMatrix(op.value);
+    case "saturate":
+      return saturateMatrix(op.value);
+    case "hue-rotate":
+      return hueRotateMatrix(op.deg);
+    case "brightness":
+      return {
+        m: [op.value, 0, 0, 0, op.value, 0, 0, 0, op.value],
+        o: [0, 0, 0],
+      };
+    case "contrast": {
+      const offset = (1 - op.value) / 2;
+      return {
+        m: [op.value, 0, 0, 0, op.value, 0, 0, 0, op.value],
+        o: [offset, offset, offset],
+      };
+    }
+  }
+}
+
+// Folds ops into one matrix by applying each on top of the previous:
+// M = M_next · M_prev, O = M_next · O_prev + O_next.
+function opsToMatrix(ops: FilterOp[]): ColorMatrix {
+  return ops.reduce<ColorMatrix>((prev, op) => {
+    const { m: n, o: no } = opToMatrix(op);
+    const m = new Array<number>(9);
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        m[row * 3 + col] =
+          n[row * 3] * prev.m[col] +
+          n[row * 3 + 1] * prev.m[3 + col] +
+          n[row * 3 + 2] * prev.m[6 + col];
+      }
+    }
+    const o = new Array<number>(3);
+    for (let row = 0; row < 3; row++) {
+      o[row] =
+        n[row * 3] * prev.o[0] +
+        n[row * 3 + 1] * prev.o[1] +
+        n[row * 3 + 2] * prev.o[2] +
+        no[row];
+    }
+    return { m, o };
+  }, IDENTITY_MATRIX);
+}
+
+// Applied in place. Uint8ClampedArray clamps for us, so no manual bounds checks.
+function applyFilterOps(imageData: ImageData, ops: FilterOp[]) {
+  if (ops.length === 0) return;
+  const { m, o } = opsToMatrix(ops);
+  const or = o[0] * 255;
+  const og = o[1] * 255;
+  const ob = o[2] * 255;
+  const px = imageData.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const r = px[i];
+    const g = px[i + 1];
+    const b = px[i + 2];
+    px[i] = m[0] * r + m[1] * g + m[2] * b + or;
+    px[i + 1] = m[3] * r + m[4] * g + m[5] * b + og;
+    px[i + 2] = m[6] * r + m[7] * g + m[8] * b + ob;
+  }
 }
 
 type Stage = "idle" | "prompt" | "live" | "preview";
@@ -84,6 +256,7 @@ export default function Camera() {
   const burstTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashHoldTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const torchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [stage, setStage] = useState<Stage>("idle");
   const [source, setSource] = useState<Source>(null);
@@ -96,6 +269,7 @@ export default function Camera() {
   const [hdrOn, setHdrOn] = useState(false);
   const [burstOn, setBurstOn] = useState(false);
   const [timerOption, setTimerOption] = useState<TimerOption>(0);
+  const [torchSupported, setTorchSupported] = useState(false);
   const [countdownValue, setCountdownValue] = useState<number | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [flashActive, setFlashActive] = useState(false);
@@ -120,6 +294,20 @@ export default function Camera() {
     streamRef.current = null;
   }, []);
 
+  // Best-effort: silently no-ops on devices without a torch.
+  const setTorch = useCallback(async (on: boolean) => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return false;
+    try {
+      await track.applyConstraints({
+        advanced: [{ torch: on } as TorchConstraintSet],
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   useEffect(() => stopStream, [stopStream]);
 
   useEffect(() => {
@@ -129,6 +317,7 @@ export default function Camera() {
       if (burstTimeoutRef.current) clearTimeout(burstTimeoutRef.current);
       if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
       if (flashHoldTimeoutRef.current) clearTimeout(flashHoldTimeoutRef.current);
+      if (torchTimeoutRef.current) clearTimeout(torchTimeoutRef.current);
     };
   }, []);
 
@@ -159,6 +348,9 @@ export default function Camera() {
           audio: false,
         });
         streamRef.current = stream;
+        const track = stream.getVideoTracks()[0];
+        const caps = track?.getCapabilities?.() as TorchCapabilities | undefined;
+        setTorchSupported(Boolean(caps?.torch));
         setFacingMode(mode);
         setSource("camera");
         setStage("live");
@@ -185,11 +377,12 @@ export default function Camera() {
     [facingMode]
   );
 
-  const switchCamera = useCallback(() => {
+  const switchCamera = useCallback(async () => {
     const next: FacingMode = facingMode === "environment" ? "user" : "environment";
+    await setTorch(false);
     stopStream();
     openLive(next);
-  }, [facingMode, stopStream, openLive]);
+  }, [facingMode, setTorch, stopStream, openLive]);
 
   // Entry point for "Take Photo": check whether we already hold camera
   // permission and route accordingly.
@@ -241,13 +434,17 @@ export default function Camera() {
     if (burstTimeoutRef.current) clearTimeout(burstTimeoutRef.current);
     if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
     if (flashHoldTimeoutRef.current) clearTimeout(flashHoldTimeoutRef.current);
+    if (torchTimeoutRef.current) clearTimeout(torchTimeoutRef.current);
     setCountdownValue(null);
     setIsCapturing(false);
     setFlashActive(false);
+    // Best-effort torch-off; stopping the track extinguishes it regardless, so
+    // don't gate teardown on the constraint call resolving.
+    void setTorch(false);
     stopStream();
     setStage("idle");
     setSource(null);
-  }, [stopStream]);
+  }, [stopStream, setTorch]);
 
   const openLibrary = useCallback(() => {
     libraryInputRef.current?.click();
@@ -291,8 +488,6 @@ export default function Camera() {
       const ctx = canvas.getContext("2d");
       if (!ctx) return resolve(null);
 
-      ctx.filter = composeFilterCss(filterIndex, hdrOn);
-
       ctx.save();
       if (facingMode === "user") {
         ctx.translate(vw, 0);
@@ -300,6 +495,16 @@ export default function Camera() {
       }
       ctx.drawImage(video, sx, sy, sw, sh, 0, 0, vw, vh);
       ctx.restore();
+
+      // Filters are applied to the pixels rather than via ctx.filter, which is
+      // silently unsupported on some mobile browsers (older iOS Safari) and
+      // would leave the captured photo unfiltered while the preview looked fine.
+      const ops = composeFilterOps(filterIndex, hdrOn);
+      if (ops.length > 0) {
+        const imageData = ctx.getImageData(0, 0, vw, vh);
+        applyFilterOps(imageData, ops);
+        ctx.putImageData(imageData, 0, 0);
+      }
 
       canvas.toBlob(
         (blob) => {
@@ -338,7 +543,35 @@ export default function Camera() {
     });
   }, [flashOn]);
 
+  const waitForTorchWarmup = useCallback(() => {
+    return new Promise<void>((resolve) => {
+      torchTimeoutRef.current = setTimeout(resolve, TORCH_WARMUP_MS);
+    });
+  }, []);
+
+  // The rear camera uses the real torch where the hardware exposes it; the front
+  // camera (and any device without torch support) falls back to a screen flash.
+  const useTorch = flashOn && facingMode === "environment" && torchSupported;
+
   const runSingleCapture = useCallback(async () => {
+    if (useTorch) {
+      await setTorch(true);
+      await waitForTorchWarmup();
+      if (cancelledRef.current) {
+        await setTorch(false);
+        return;
+      }
+      const item = await captureFrame();
+      await setTorch(false);
+      if (cancelledRef.current || !item) return;
+      stopStream();
+      setPreviewItems([item]);
+      setSaveStatus("idle");
+      setSaveError(null);
+      setStage("preview");
+      return;
+    }
+
     fireFlash();
     await waitForPaint();
     if (cancelledRef.current) return;
@@ -351,24 +584,49 @@ export default function Camera() {
     setSaveStatus("idle");
     setSaveError(null);
     setStage("preview");
-  }, [fireFlash, waitForPaint, captureFrame, waitOutFlash, stopStream]);
+  }, [
+    useTorch,
+    setTorch,
+    waitForTorchWarmup,
+    fireFlash,
+    waitForPaint,
+    captureFrame,
+    waitOutFlash,
+    stopStream,
+  ]);
 
   const runBurstCapture = useCallback(async () => {
     setIsCapturing(true);
     const items: PreviewItem[] = [];
-    for (let i = 0; i < BURST_COUNT; i++) {
+
+    // Hold the torch on for the whole burst — toggling per shot is slow and strobes.
+    if (useTorch) {
+      await setTorch(true);
+      await waitForTorchWarmup();
       if (cancelledRef.current) {
+        await setTorch(false);
         setIsCapturing(false);
         return;
       }
-      fireFlash();
-      await waitForPaint();
+    }
+
+    for (let i = 0; i < BURST_COUNT; i++) {
       if (cancelledRef.current) {
+        if (useTorch) await setTorch(false);
         setIsCapturing(false);
         return;
+      }
+      if (!useTorch) {
+        fireFlash();
+        await waitForPaint();
+        if (cancelledRef.current) {
+          setIsCapturing(false);
+          return;
+        }
       }
       const item = await captureFrame();
       if (cancelledRef.current) {
+        if (useTorch) await setTorch(false);
         setIsCapturing(false);
         return;
       }
@@ -377,14 +635,17 @@ export default function Camera() {
         await new Promise<void>((resolve) => {
           burstTimeoutRef.current = setTimeout(resolve, BURST_INTERVAL_MS);
         });
-      } else {
+      } else if (!useTorch) {
         await waitOutFlash();
       }
       if (cancelledRef.current) {
+        if (useTorch) await setTorch(false);
         setIsCapturing(false);
         return;
       }
     }
+
+    if (useTorch) await setTorch(false);
     if (cancelledRef.current) return;
     setIsCapturing(false);
     stopStream();
@@ -392,7 +653,16 @@ export default function Camera() {
     setSaveStatus("idle");
     setSaveError(null);
     setStage("preview");
-  }, [fireFlash, waitForPaint, captureFrame, waitOutFlash, stopStream]);
+  }, [
+    useTorch,
+    setTorch,
+    waitForTorchWarmup,
+    fireFlash,
+    waitForPaint,
+    captureFrame,
+    waitOutFlash,
+    stopStream,
+  ]);
 
   const cancelCountdown = useCallback(() => {
     if (countdownTimeoutRef.current) clearTimeout(countdownTimeoutRef.current);
@@ -659,7 +929,7 @@ export default function Camera() {
             playsInline
             muted
             style={{
-              filter: composeFilterCss(filterIndex, hdrOn),
+              filter: opsToCss(composeFilterOps(filterIndex, hdrOn)),
               transform: `scale(${zoom})${facingMode === "user" ? " scaleX(-1)" : ""}`,
             }}
             className="h-full w-full object-cover"
