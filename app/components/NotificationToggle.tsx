@@ -47,7 +47,7 @@ export default function NotificationToggle() {
 
   if (status === "ios-not-installed") {
     return (
-      <p className="max-w-xs text-center text-xs text-gray-500">
+      <p className="mt-4 max-w-xs shrink-0 text-center text-xs text-gray-500">
         Add this to your Home Screen (Share → Add to Home Screen), then come
         back to enable lock-screen updates.
       </p>
