@@ -21,7 +21,8 @@ export async function updatePhotoCountNotification(remaining: number): Promise<v
   if (!("serviceWorker" in navigator) || Notification.permission !== "granted") return;
   try {
     const registration = await navigator.serviceWorker.ready;
-    await registration.showNotification("Ellen and Brylle Wedding", {
+    const eventName = process.env.NEXT_PUBLIC_EVENT_NAME || "Ellen and Brylle Wedding";
+    await registration.showNotification(eventName, {
       body:
         remaining > 0
           ? `${remaining} photo${remaining === 1 ? "" : "s"} left tonight`

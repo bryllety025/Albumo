@@ -13,16 +13,15 @@ import {
   ZapOff,
   Images,
   Check,
+  ChevronRight,
 } from "lucide-react";
 import {
   PHOTO_LIMIT,
   getStoredCount,
   incrementStoredCount,
-  getStoredPhotos,
   addStoredPhoto,
   createThumbnail,
 } from "@/lib/photoStorage";
-import PhotoGallery from "./PhotoGallery";
 import { updatePhotoCountNotification } from "@/lib/notifications";
 
 // Filters are stored as structured ops rather than CSS strings so the live
@@ -277,12 +276,9 @@ export default function Camera() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [photoCount, setPhotoCount] = useState<number | null>(null);
-  const [photos, setPhotos] = useState<string[]>([]);
-  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
 
   useEffect(() => {
     setPhotoCount(getStoredCount());
-    setPhotos(getStoredPhotos());
   }, []);
 
   const remaining =
@@ -781,7 +777,7 @@ export default function Camera() {
 
         runningCount = incrementStoredCount();
         const thumb = await createThumbnail(item.url, 640, 0.72);
-        setPhotos(addStoredPhoto(thumb));
+        addStoredPhoto(thumb);
       }
       setPhotoCount(runningCount);
       updatePhotoCountNotification(Math.max(PHOTO_LIMIT - runningCount, 0));
@@ -805,7 +801,7 @@ export default function Camera() {
           <>
             <button
               onClick={handleTakePhoto}
-              className="inline-flex items-center gap-2 rounded-full bg-sage-700 px-6 py-3 font-medium text-ivory transition-colors hover:bg-sage-900"
+              className="inline-flex items-center gap-2 rounded-full bg-navy-900 px-6 py-3 font-medium text-ivory transition-colors hover:bg-navy-900/90"
             >
               <RotateCcw size={18} strokeWidth={1.75} />
               Try Again
@@ -815,7 +811,7 @@ export default function Camera() {
                 setError(null);
                 setPermissionDenied(false);
               }}
-              className="text-sm text-sage-600 underline underline-offset-2"
+              className="text-sm text-gray-500 underline underline-offset-2"
             >
               Or choose a photo instead
             </button>
@@ -823,7 +819,7 @@ export default function Camera() {
         ) : (
           <button
             onClick={() => setError(null)}
-            className="inline-flex items-center gap-2 rounded-full bg-sage-700 px-6 py-3 font-medium text-ivory transition-colors hover:bg-sage-900"
+            className="inline-flex items-center gap-2 rounded-full bg-navy-900 px-6 py-3 font-medium text-ivory transition-colors hover:bg-navy-900/90"
           >
             <ArrowLeft size={18} strokeWidth={1.75} />
             Back
@@ -844,53 +840,61 @@ export default function Camera() {
       />
       <canvas ref={canvasRef} className="hidden" />
 
-      {photoCount !== null && (
-        <div className="fixed bottom-4 left-4 z-[60] rounded-full bg-sage-900/80 px-3 py-1.5 text-xs font-medium text-ivory backdrop-blur">
-          {remaining > 0 ? `${remaining} photos left` : "Limit reached"}
-        </div>
-      )}
-      {photos[0] && (
-        <button
-          onClick={() => setIsGalleryOpen(true)}
-          aria-label="View your photos"
-          className="fixed bottom-4 right-4 z-[60] h-14 w-14 overflow-hidden rounded-lg border-2 border-ivory/80 shadow-lg"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={photos[0]}
-            alt="Last saved photo"
-            className="h-full w-full object-cover"
-          />
-        </button>
-      )}
-      {isGalleryOpen && (
-        <PhotoGallery photos={photos} onClose={() => setIsGalleryOpen(false)} />
-      )}
-
       {stage === "idle" &&
         (limitReached ? (
-          <div className="max-w-sm rounded-2xl bg-sage-100 px-6 py-5 text-center text-sage-900">
-            <p className="font-medium">You&apos;ve shared 20 photos — thank you!</p>
-            <p className="mt-1 text-sm text-sage-700">
+          <div className="bg-gray-50 px-6 py-5 text-center">
+            <p className="font-medium text-foreground">
+              You&apos;ve shared 20 photos — thank you!
+            </p>
+            <p className="mt-1 text-sm text-gray-500">
               That&apos;s the limit per device for tonight. Ask a friend to
               snap the next one!
             </p>
           </div>
         ) : (
-          <div className="flex gap-4">
+          <div className="flex flex-col">
             <button
               onClick={handleTakePhoto}
-              className="inline-flex items-center gap-2 rounded-full bg-sage-700 px-6 py-4 text-lg font-medium text-ivory transition-colors hover:bg-sage-900"
+              className="flex items-center gap-3 bg-navy-900 px-4 py-4 text-left transition-colors hover:bg-navy-900/90"
             >
-              <CameraIcon size={35} strokeWidth={1.75} />
-              Take Photo
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-navy-800">
+                <CameraIcon size={22} strokeWidth={1.75} className="text-white" />
+              </span>
+              <span className="flex-1">
+                <span className="block text-base font-semibold text-white">
+                  Take Photo
+                </span>
+                <span className="block text-sm text-white/60">
+                  Open camera and capture the moment
+                </span>
+              </span>
+              <ChevronRight
+                size={20}
+                strokeWidth={1.75}
+                className="shrink-0 text-white/50"
+              />
             </button>
+
             <button
               onClick={openLibrary}
-              className="inline-flex items-center gap-2 rounded-full bg-sage-100 px-6 py-4 text-lg font-medium text-sage-900 transition-colors hover:bg-sage-100/70"
+              className="flex items-center gap-3 bg-white px-4 py-4 text-left transition-colors hover:bg-gray-50"
             >
-              <ImageIcon size={35} strokeWidth={1.75} />
-              Choose Photo
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-100">
+                <ImageIcon size={22} strokeWidth={1.75} className="text-blue-600" />
+              </span>
+              <span className="flex-1">
+                <span className="block text-base font-semibold text-foreground">
+                  Choose Photo
+                </span>
+                <span className="block text-sm text-gray-500">
+                  Upload from your camera roll
+                </span>
+              </span>
+              <ChevronRight
+                size={20}
+                strokeWidth={1.75}
+                className="shrink-0 text-gray-300"
+              />
             </button>
           </div>
         ))}
@@ -900,20 +904,20 @@ export default function Camera() {
           <p className="max-w-sm text-lg">
             Wedding Photos needs access to your camera to take a photo.
           </p>
-          <p className="max-w-sm text-sm text-sage-600">
+          <p className="max-w-sm text-sm text-gray-500">
             Tap Allow below, then choose Allow when your browser asks for
             permission.
           </p>
           <button
             onClick={handlePromptScreenCaptureClick}
-            className="inline-flex items-center gap-2 rounded-full bg-sage-700 px-8 py-3 font-medium text-ivory transition-colors hover:bg-sage-900"
+            className="inline-flex items-center gap-2 rounded-full bg-navy-900 px-8 py-3 font-medium text-ivory transition-colors hover:bg-navy-900/90"
           >
             <CameraIcon size={18} strokeWidth={1.75} />
             Allow Camera
           </button>
           <button
             onClick={() => setStage("idle")}
-            className="inline-flex items-center gap-1 text-sm text-sage-600 underline underline-offset-2"
+            className="inline-flex items-center gap-1 text-sm text-gray-500 underline underline-offset-2"
           >
             <X size={14} strokeWidth={1.75} />
             Cancel
@@ -961,7 +965,7 @@ export default function Camera() {
               aria-label="Toggle flash"
               disabled={isCapturing || countdownValue !== null}
               className={`h-10 w-10 rounded-full backdrop-blur flex items-center justify-center transition-colors disabled:opacity-50 ${
-                flashOn ? "bg-sage-500 text-ivory" : "bg-camera-bg/60 text-ivory hover:bg-camera-bg/80"
+                flashOn ? "bg-indigo-600 text-ivory" : "bg-camera-bg/60 text-ivory hover:bg-camera-bg/80"
               }`}
             >
               {flashOn ? (
@@ -975,7 +979,7 @@ export default function Camera() {
               aria-label="Toggle HDR"
               disabled={isCapturing || countdownValue !== null}
               className={`h-10 rounded-full px-3 text-xs font-medium backdrop-blur flex items-center justify-center transition-colors disabled:opacity-50 ${
-                hdrOn ? "bg-sage-500 text-ivory" : "bg-camera-bg/60 text-ivory hover:bg-camera-bg/80"
+                hdrOn ? "bg-indigo-600 text-ivory" : "bg-camera-bg/60 text-ivory hover:bg-camera-bg/80"
               }`}
             >
               HDR
@@ -985,7 +989,7 @@ export default function Camera() {
               aria-label="Toggle burst mode"
               disabled={isCapturing || countdownValue !== null}
               className={`h-10 w-10 rounded-full backdrop-blur flex items-center justify-center transition-colors disabled:opacity-50 ${
-                burstOn ? "bg-sage-500 text-ivory" : "bg-camera-bg/60 text-ivory hover:bg-camera-bg/80"
+                burstOn ? "bg-indigo-600 text-ivory" : "bg-camera-bg/60 text-ivory hover:bg-camera-bg/80"
               }`}
             >
               <Images size={18} strokeWidth={1.75} />
@@ -1001,7 +1005,7 @@ export default function Camera() {
                   disabled={isCapturing || countdownValue !== null}
                   className={`shrink-0 rounded-full px-4 py-1.5 text-sm transition-colors disabled:opacity-50 ${
                     i === filterIndex
-                      ? "bg-sage-500 text-ivory"
+                      ? "bg-indigo-600 text-ivory"
                       : "bg-ivory/15 text-ivory backdrop-blur hover:bg-ivory/25"
                   }`}
                 >
@@ -1018,7 +1022,7 @@ export default function Camera() {
                   disabled={isCapturing}
                   className={`rounded-full px-4 py-1.5 text-sm transition-colors disabled:opacity-50 ${
                     t === timerOption
-                      ? "bg-sage-500 text-ivory"
+                      ? "bg-indigo-600 text-ivory"
                       : "bg-ivory/15 text-ivory backdrop-blur hover:bg-ivory/25"
                   }`}
                 >
@@ -1037,7 +1041,7 @@ export default function Camera() {
                 value={zoom}
                 onChange={(e) => setZoom(parseFloat(e.target.value))}
                 disabled={isCapturing || countdownValue !== null}
-                className="flex-1 accent-sage-300 disabled:opacity-50"
+                className="flex-1 accent-indigo-500 disabled:opacity-50"
               />
               <span className="text-sm">{MAX_ZOOM}x</span>
             </div>
@@ -1047,7 +1051,7 @@ export default function Camera() {
               aria-label={burstOn ? "Take burst photos" : "Take photo"}
               disabled={isCapturing}
               className={`h-16 w-16 rounded-full border-4 transition-colors disabled:opacity-60 ${
-                burstOn ? "border-sage-300" : "border-ivory"
+                burstOn ? "border-indigo-500" : "border-ivory"
               } bg-ivory/30 hover:bg-ivory/50 disabled:hover:bg-ivory/30`}
             />
           </div>
@@ -1083,7 +1087,7 @@ export default function Camera() {
                     key={item.url}
                     onClick={() => toggleItemSelected(i)}
                     className={`relative aspect-square overflow-hidden rounded-lg border-2 transition-opacity ${
-                      item.selected ? "border-sage-500" : "border-transparent opacity-50"
+                      item.selected ? "border-indigo-600" : "border-transparent opacity-50"
                     }`}
                   >
                     <img
@@ -1093,7 +1097,7 @@ export default function Camera() {
                     />
                     <span
                       className={`absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full ${
-                        item.selected ? "bg-sage-500" : "bg-black/40"
+                        item.selected ? "bg-indigo-600" : "bg-black/40"
                       }`}
                     >
                       {item.selected && (
@@ -1114,7 +1118,7 @@ export default function Camera() {
               </p>
               <button
                 onClick={handleDone}
-                className="inline-flex items-center gap-2 rounded-full bg-sage-700 px-6 py-3 font-medium text-ivory transition-colors hover:bg-sage-900"
+                className="inline-flex items-center gap-2 rounded-full bg-navy-900 px-6 py-3 font-medium text-ivory transition-colors hover:bg-navy-900/90"
               >
                 <CameraIcon size={18} strokeWidth={1.75} />
                 Take Another
@@ -1139,7 +1143,7 @@ export default function Camera() {
                 <button
                   onClick={handleSave}
                   disabled={saveStatus === "saving"}
-                  className="inline-flex items-center gap-2 rounded-full bg-sage-700 px-6 py-3 font-medium text-ivory transition-colors hover:bg-sage-900 disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-full bg-navy-900 px-6 py-3 font-medium text-ivory transition-colors hover:bg-navy-900/90 disabled:opacity-50"
                 >
                   {saveStatus === "saving" ? (
                     "Saving..."

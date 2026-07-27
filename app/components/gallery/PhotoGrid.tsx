@@ -26,7 +26,7 @@ export default function PhotoGrid({
           <div
             key={photo.id}
             className={`relative aspect-square overflow-hidden rounded-lg border-2 ${
-              selected ? "border-sage-500" : "border-transparent"
+              selected ? "border-indigo-600" : "border-transparent"
             }`}
           >
             <button
@@ -49,7 +49,7 @@ export default function PhotoGrid({
               }}
               aria-label={selected ? "Deselect photo" : "Select photo"}
               className={`absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full ${
-                selected ? "bg-sage-500" : "bg-black/40"
+                selected ? "bg-indigo-600" : "bg-black/40"
               }`}
             >
               {selected && <Check size={12} strokeWidth={2.5} className="text-ivory" />}

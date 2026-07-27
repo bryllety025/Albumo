@@ -1,28 +1,35 @@
 @import "tailwindcss";
 
 :root {
-  --background: #faf8f2;
-  --foreground: #232b1f;
+  --background: #f7f7f8;
+  --foreground: #111318;
 
-  --color-sage-100: #e7ece0;
-  --color-sage-300: #b7c9a8;
-  --color-sage-500: #7c9473;
-  --color-sage-700: #48593f;
-  --color-sage-900: #232b1f;
-  --color-ivory: #faf8f2;
-  --color-camera-bg: #191e17;
+  --color-ivory: #ffffff;
+  --color-camera-bg: #12131a;
+
+  --color-navy-900: #12131a;
+  --color-navy-800: #1f2130;
+  --color-indigo-600: #4f46e5;
+  --color-indigo-500: #6366f1;
+  --color-indigo-100: #ede9fe;
+  --color-blue-100: #dbeafe;
+  --color-blue-600: #2563eb;
+  --color-gray-50: #f7f7f8;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-sage-100: var(--color-sage-100);
-  --color-sage-300: var(--color-sage-300);
-  --color-sage-500: var(--color-sage-500);
-  --color-sage-700: var(--color-sage-700);
-  --color-sage-900: var(--color-sage-900);
   --color-ivory: var(--color-ivory);
   --color-camera-bg: var(--color-camera-bg);
+  --color-navy-900: var(--color-navy-900);
+  --color-navy-800: var(--color-navy-800);
+  --color-indigo-600: var(--color-indigo-600);
+  --color-indigo-500: var(--color-indigo-500);
+  --color-indigo-100: var(--color-indigo-100);
+  --color-blue-100: var(--color-blue-100);
+  --color-blue-600: var(--color-blue-600);
+  --color-gray-50: var(--color-gray-50);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-display: var(--font-display-serif);

@@ -17,8 +17,10 @@ const playfairDisplay = Playfair_Display({
   subsets: ["latin"],
 });
 
+const EVENT_NAME = process.env.NEXT_PUBLIC_EVENT_NAME || "Ellen and Brylle Wedding";
+
 export const metadata: Metadata = {
-  title: "Ellen and Brylle Wedding",
+  title: EVENT_NAME,
   description:
     "Take a photo and share it straight to our wedding Google Drive album.",
   icons: {
@@ -33,7 +35,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#48593f",
+  themeColor: "#12131a",
 };
 
 export default function RootLayout({

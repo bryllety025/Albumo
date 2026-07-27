@@ -108,7 +108,7 @@ export default function GalleryView() {
       <div className="flex items-center justify-between gap-2 px-4 py-3">
         <Link
           href="/"
-          className="inline-flex items-center gap-1.5 rounded-full px-2 py-2 text-sm font-medium text-sage-900 hover:bg-sage-100/70"
+          className="inline-flex items-center gap-1.5 rounded-full px-2 py-2 text-sm font-medium text-foreground hover:bg-gray-100"
         >
           <ArrowLeft size={18} strokeWidth={1.75} />
           Back
@@ -117,18 +117,18 @@ export default function GalleryView() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setSortOrder((o) => (o === "desc" ? "asc" : "desc"))}
-            className="inline-flex items-center gap-2 rounded-full bg-sage-100 px-4 py-2 text-sm font-medium text-sage-900 hover:bg-sage-100/70"
+            className="inline-flex items-center gap-2 rounded-full bg-gray-50 px-4 py-2 text-sm font-medium text-foreground hover:bg-gray-100"
           >
             <ArrowDownUp size={16} strokeWidth={1.75} />
             {sortOrder === "desc" ? "Newest first" : "Oldest first"}
           </button>
 
-          <div className="flex rounded-full bg-sage-100 p-1">
+          <div className="flex rounded-full bg-gray-50 p-1">
             <button
               onClick={() => setLayout("grid")}
               aria-label="Grid layout"
               className={`rounded-full p-1.5 ${
-                layout === "grid" ? "bg-sage-500 text-ivory" : "text-sage-900"
+                layout === "grid" ? "bg-indigo-600 text-ivory" : "text-foreground"
               }`}
             >
               <LayoutGrid size={16} strokeWidth={1.75} />
@@ -137,7 +137,7 @@ export default function GalleryView() {
               onClick={() => setLayout("list")}
               aria-label="List layout"
               className={`rounded-full p-1.5 ${
-                layout === "list" ? "bg-sage-500 text-ivory" : "text-sage-900"
+                layout === "list" ? "bg-indigo-600 text-ivory" : "text-foreground"
               }`}
             >
               <List size={16} strokeWidth={1.75} />
@@ -149,16 +149,16 @@ export default function GalleryView() {
       <div className="min-h-0 flex-1">
         {status === "loading" && (
           <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-sage-700">Loading photos…</p>
+            <p className="text-sm text-gray-600">Loading photos…</p>
           </div>
         )}
 
         {status === "error" && (
           <div className="flex h-full flex-col items-center justify-center gap-3">
-            <p className="text-sm text-sage-700">Couldn&apos;t load photos.</p>
+            <p className="text-sm text-gray-600">Couldn&apos;t load photos.</p>
             <button
               onClick={loadPhotos}
-              className="rounded-full bg-sage-700 px-5 py-2.5 text-sm font-medium text-ivory hover:bg-sage-900"
+              className="rounded-full bg-navy-900 px-5 py-2.5 text-sm font-medium text-ivory hover:bg-navy-900/90"
             >
               Try again
             </button>
@@ -167,7 +167,7 @@ export default function GalleryView() {
 
         {status === "loaded" && sortedPhotos.length === 0 && (
           <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-sage-700">No photos yet</p>
+            <p className="text-sm text-gray-600">No photos yet</p>
           </div>
         )}
 
@@ -193,19 +193,19 @@ export default function GalleryView() {
       </div>
 
       {selectedIds.size > 0 && (
-        <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-sage-100 bg-background px-4 py-3">
-          <span className="text-sm text-sage-700">{selectedIds.size} selected</span>
+        <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-gray-100 bg-background px-4 py-3">
+          <span className="text-sm text-gray-600">{selectedIds.size} selected</span>
           <div className="flex items-center gap-3">
             <button
               onClick={clearSelection}
-              className="text-sm text-sage-600 underline underline-offset-2"
+              className="text-sm text-gray-500 underline underline-offset-2"
             >
               Clear
             </button>
             <button
               onClick={handleDownloadSelected}
               disabled={downloadingSelection}
-              className="inline-flex items-center gap-2 rounded-full bg-sage-700 px-5 py-2.5 text-sm font-medium text-ivory hover:bg-sage-900 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-full bg-navy-900 px-5 py-2.5 text-sm font-medium text-ivory hover:bg-navy-900/90 disabled:opacity-50"
             >
               <Download size={16} strokeWidth={1.75} />
               Download selected ({selectedIds.size})

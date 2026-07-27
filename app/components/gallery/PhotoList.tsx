@@ -29,14 +29,14 @@ export default function PhotoList({
   onDownload,
 }: PhotoListProps) {
   return (
-    <div className="flex flex-col divide-y divide-sage-100 overflow-y-auto">
+    <div className="flex flex-col divide-y divide-gray-100 overflow-y-auto">
       {photos.map((photo, i) => {
         const selected = selectedIds.has(photo.id);
         return (
           <button
             key={photo.id}
             onClick={() => onOpenPreview(i)}
-            className="flex items-center gap-3 px-4 py-3 text-left hover:bg-sage-100/40"
+            className="flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-100"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -46,10 +46,10 @@ export default function PhotoList({
             />
 
             <div className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-sm font-medium text-sage-900">
+              <span className="truncate text-sm font-medium text-foreground">
                 {photo.name}
               </span>
-              <span className="text-xs text-sage-700/70">
+              <span className="text-xs text-gray-500">
                 {formatDate(photo.createdTime)}
               </span>
             </div>
@@ -62,7 +62,7 @@ export default function PhotoList({
                 }}
                 aria-label={selected ? "Deselect photo" : "Select photo"}
                 className={`flex h-6 w-6 items-center justify-center rounded-full ${
-                  selected ? "bg-sage-500" : "bg-black/20"
+                  selected ? "bg-indigo-600" : "bg-black/20"
                 }`}
               >
                 {selected && (
@@ -75,7 +75,7 @@ export default function PhotoList({
                   onDownload(photo.id, photo.name);
                 }}
                 aria-label={`Download ${photo.name}`}
-                className="rounded-full p-2 text-sage-700 hover:bg-sage-100"
+                className="rounded-full p-2 text-gray-600 hover:bg-gray-100"
               >
                 <Download size={18} strokeWidth={1.75} />
               </button>
