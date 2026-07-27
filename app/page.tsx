@@ -1,7 +1,7 @@
 import Image from "next/image";
 import heroImage from "@/assets/img/DSC05857.jpg";
 import Camera from "./components/Camera";
-import DriveFolderButton from "./components/DriveFolderButton";
+import ViewGalleryButton from "./components/ViewGalleryButton";
 import NotificationToggle from "./components/NotificationToggle";
 
 export default function Home() {
@@ -23,7 +23,7 @@ export default function Home() {
           Ellen and Brylle Wedding
         </h1>
         <Camera />
-        <DriveFolderButton />
+        <ViewGalleryButton />
         <NotificationToggle />
       </div>
     </div>

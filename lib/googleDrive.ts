@@ -5,6 +5,13 @@ const UPLOAD_URL =
 const FOLDER_NAME = "Wedding Photos";
 const FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
 
+export type DriveFile = {
+  id: string;
+  name: string;
+  createdTime: string;
+  mimeType: string;
+};
+
 // The drive.file OAuth scope only grants visibility into files/folders this
 // app itself created — a folder ID pasted in from Drive's own UI is
 // invisible to it. So instead of relying on a fixed folder ID, find (or
@@ -66,14 +73,6 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-const DRIVE_FOLDER_URL_BASE = "https://drive.google.com/drive/folders/";
-
-export async function getDriveFolderUrl(): Promise<string> {
-  const accessToken = await getAccessToken();
-  const folderId = await findOrCreateFolder(accessToken);
-  return `${DRIVE_FOLDER_URL_BASE}${folderId}`;
-}
-
 export async function uploadToDrive(
   bytes: Buffer,
   filename: string,
@@ -115,4 +114,69 @@ export async function uploadToDrive(
 
   const data = (await res.json()) as { id: string };
   return data.id;
+}
+
+export async function listPhotos(): Promise<DriveFile[]> {
+  const accessToken = await getAccessToken();
+  const folderId = await findOrCreateFolder(accessToken);
+
+  const query = encodeURIComponent(
+    `'${folderId}' in parents and mimeType contains 'image/' and trashed=false`
+  );
+  const fields = encodeURIComponent(
+    "files(id,name,createdTime,mimeType),nextPageToken"
+  );
+
+  const files: DriveFile[] = [];
+  let pageToken: string | undefined;
+  do {
+    const pageParam = pageToken ? `&pageToken=${pageToken}` : "";
+    const res = await fetch(
+      `${FILES_URL}?q=${query}&fields=${fields}&orderBy=createdTime desc&pageSize=1000${pageParam}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (!res.ok) {
+      throw new Error(`Failed to list Drive photos: ${await res.text()}`);
+    }
+    const data = (await res.json()) as {
+      files?: DriveFile[];
+      nextPageToken?: string;
+    };
+    files.push(...(data.files ?? []));
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+
+  return files;
+}
+
+export async function getDriveFile(
+  fileId: string
+): Promise<{ bytes: Buffer; mimeType: string; name: string }> {
+  const accessToken = await getAccessToken();
+  const authHeader = { Authorization: `Bearer ${accessToken}` };
+
+  const metaRes = await fetch(`${FILES_URL}/${fileId}?fields=name,mimeType`, {
+    headers: authHeader,
+  });
+  if (!metaRes.ok) {
+    throw new Error(
+      `Failed to get Drive file metadata for ${fileId}: ${await metaRes.text()}`
+    );
+  }
+  const { name, mimeType } = (await metaRes.json()) as {
+    name: string;
+    mimeType: string;
+  };
+
+  const contentRes = await fetch(`${FILES_URL}/${fileId}?alt=media`, {
+    headers: authHeader,
+  });
+  if (!contentRes.ok) {
+    throw new Error(
+      `Failed to get Drive file content for ${fileId}: ${await contentRes.text()}`
+    );
+  }
+  const bytes = Buffer.from(await contentRes.arrayBuffer());
+
+  return { bytes, mimeType, name };
 }
