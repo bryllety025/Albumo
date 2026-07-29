@@ -245,7 +245,11 @@ function buildFilename(ext: string) {
   return `photo-${timestamp}.${ext}`;
 }
 
-export default function Camera() {
+type Props = {
+  eventName: string;
+};
+
+export default function Camera({ eventName }: Props) {
   const libraryInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -780,7 +784,7 @@ export default function Camera() {
         addStoredPhoto(thumb);
       }
       setPhotoCount(runningCount);
-      updatePhotoCountNotification(Math.max(PHOTO_LIMIT - runningCount, 0));
+      updatePhotoCountNotification(Math.max(PHOTO_LIMIT - runningCount, 0), eventName);
       setSaveStatus("success");
       if (skippedForLimit > 0) {
         setSaveError(
@@ -791,7 +795,7 @@ export default function Camera() {
       setSaveStatus("error");
       setSaveError("Couldn't share your photo. Check your connection and try again.");
     }
-  }, [previewItems, photoCount]);
+  }, [previewItems, photoCount, eventName]);
 
   if (error) {
     return (

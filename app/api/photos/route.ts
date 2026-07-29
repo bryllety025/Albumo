@@ -1,9 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { listPhotos } from "@/lib/s3";
+import { getTenantConfigFromRequest } from "@/lib/tenant";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const files = await listPhotos();
+    const config = getTenantConfigFromRequest(request);
+    const files = await listPhotos(config);
     return NextResponse.json({ files });
   } catch (err) {
     console.error(err);

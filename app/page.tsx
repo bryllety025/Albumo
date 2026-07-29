@@ -5,16 +5,17 @@ import Camera from "./components/Camera";
 import ViewGalleryButton from "./components/ViewGalleryButton";
 import RecentPhotosStrip from "./components/RecentPhotosStrip";
 import NotificationToggle from "./components/NotificationToggle";
+import { getRequestTenantConfig } from "@/lib/tenant";
 
-const EVENT_NAME = process.env.NEXT_PUBLIC_EVENT_NAME || "Ellen and Brylle Wedding";
+export default async function Home() {
+  const { eventName } = await getRequestTenantConfig();
 
-export default function Home() {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background px-5 pb-6 pt-5 text-foreground">
       <div className="flex shrink-0 items-center justify-between">
         <Image src={logo} alt="Albumo" className="h-8 w-auto" priority />
         <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-medium text-indigo-600">
-          {EVENT_NAME}
+          {eventName}
         </span>
       </div>
 
@@ -32,13 +33,13 @@ export default function Home() {
       </div>
 
       <div className="flex shrink-0 flex-col overflow-hidden rounded-2xl">
-        <Camera />
+        <Camera eventName={eventName} />
         <ViewGalleryButton />
       </div>
 
       <RecentPhotosStrip />
 
-      <NotificationToggle />
+      <NotificationToggle eventName={eventName} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import "./globals.css";
+import { getRequestTenantConfig } from "@/lib/tenant";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -17,22 +18,27 @@ const playfairDisplay = Playfair_Display({
   subsets: ["latin"],
 });
 
-const EVENT_NAME = process.env.NEXT_PUBLIC_EVENT_NAME || "Ellen and Brylle Wedding";
+// Reads the request's Host header (via the tenant it resolves to) so the
+// title reflects whichever subdomain served the request, rather than a
+// value baked in at build time.
+export async function generateMetadata(): Promise<Metadata> {
+  const { eventName } = await getRequestTenantConfig();
 
-export const metadata: Metadata = {
-  title: EVENT_NAME,
-  description:
-    "Take a photo and share it straight to our wedding photo album.",
-  icons: {
-    icon: [
-      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
-    ],
-    apple: [
-      { url: "/icons/apple-touch-icon-180.png", sizes: "180x180", type: "image/png" },
-    ],
-  },
-};
+  return {
+    title: eventName,
+    description:
+      "Take a photo and share it straight to our wedding photo album.",
+    icons: {
+      icon: [
+        { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+        { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+      ],
+      apple: [
+        { url: "/icons/apple-touch-icon-180.png", sizes: "180x180", type: "image/png" },
+      ],
+    },
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: "#12131a",

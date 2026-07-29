@@ -17,11 +17,13 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return result === "granted";
 }
 
-export async function updatePhotoCountNotification(remaining: number): Promise<void> {
+export async function updatePhotoCountNotification(
+  remaining: number,
+  eventName: string
+): Promise<void> {
   if (!("serviceWorker" in navigator) || Notification.permission !== "granted") return;
   try {
     const registration = await navigator.serviceWorker.ready;
-    const eventName = process.env.NEXT_PUBLIC_EVENT_NAME || "Ellen and Brylle Wedding";
     await registration.showNotification(eventName, {
       body:
         remaining > 0

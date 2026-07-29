@@ -4,28 +4,24 @@ import {
   ListObjectsV2Command,
   GetObjectCommand,
 } from "@aws-sdk/client-s3";
+import type { TenantConfig } from "./tenant";
 
-function keyPrefix(): string {
-  // Optional folder/prefix inside the bucket, configurable via env so it
-  // can be changed without touching code. Normalized to have no
-  // leading/trailing slashes, then re-joined with a single trailing slash
-  // when non-empty.
-  const folder = (process.env.AWS_S3_FOLDER?.trim() ?? "").replace(
-    /^\/+|\/+$/g,
-    ""
-  );
-  return folder ? `${folder}/` : "";
+function keyPrefix(folder: string): string {
+  // Normalized to have no leading/trailing slashes, then re-joined with a
+  // single trailing slash when non-empty.
+  const cleaned = folder.trim().replace(/^\/+|\/+$/g, "");
+  return cleaned ? `${cleaned}/` : "";
 }
 
 // Constructed lazily (per call, not at module load) so that importing this
 // module — which happens during `next build`'s page-data collection — never
 // requires real AWS credentials to be present.
-function getClient(): S3Client {
+function getClient(config: TenantConfig): S3Client {
   return new S3Client({
-    region: process.env.AWS_REGION!,
+    region: config.awsRegion,
     credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      accessKeyId: config.awsAccessKeyId,
+      secretAccessKey: config.awsSecretAccessKey,
     },
   });
 }
@@ -57,14 +53,15 @@ function guessMimeType(filename: string): string {
 // configurable folder prefix is only ever applied internally when talking
 // to S3, never exposed to the client.
 export async function uploadPhoto(
+  config: TenantConfig,
   bytes: Buffer,
   filename: string,
   mimeType: string
 ): Promise<string> {
-  await getClient().send(
+  await getClient(config).send(
     new PutObjectCommand({
-      Bucket: process.env.AWS_S3_BUCKET!,
-      Key: `${keyPrefix()}${filename}`,
+      Bucket: config.awsS3Bucket,
+      Key: `${keyPrefix(config.awsS3Folder)}${filename}`,
       Body: bytes,
       ContentType: mimeType,
     })
@@ -72,16 +69,16 @@ export async function uploadPhoto(
   return filename;
 }
 
-export async function listPhotos(): Promise<PhotoFile[]> {
-  const prefix = keyPrefix();
-  const client = getClient();
+export async function listPhotos(config: TenantConfig): Promise<PhotoFile[]> {
+  const prefix = keyPrefix(config.awsS3Folder);
+  const client = getClient(config);
   const files: PhotoFile[] = [];
   let continuationToken: string | undefined;
 
   do {
     const res = await client.send(
       new ListObjectsV2Command({
-        Bucket: process.env.AWS_S3_BUCKET!,
+        Bucket: config.awsS3Bucket,
         Prefix: prefix || undefined,
         ContinuationToken: continuationToken,
       })
@@ -106,12 +103,13 @@ export async function listPhotos(): Promise<PhotoFile[]> {
 }
 
 export async function getPhoto(
+  config: TenantConfig,
   id: string
 ): Promise<{ bytes: Buffer; mimeType: string; name: string }> {
-  const res = await getClient().send(
+  const res = await getClient(config).send(
     new GetObjectCommand({
-      Bucket: process.env.AWS_S3_BUCKET!,
-      Key: `${keyPrefix()}${id}`,
+      Bucket: config.awsS3Bucket,
+      Key: `${keyPrefix(config.awsS3Folder)}${id}`,
     })
   );
 
