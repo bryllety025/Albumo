@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { uploadPhoto } from "@/lib/s3";
+import { getTenantConfigFromRequest } from "@/lib/tenant";
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
@@ -14,8 +15,10 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const config = getTenantConfigFromRequest(req);
     const bytes = Buffer.from(await file.arrayBuffer());
     const fileId = await uploadPhoto(
+      config,
       bytes,
       filename,
       file.type || "image/jpeg"

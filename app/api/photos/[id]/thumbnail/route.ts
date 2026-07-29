@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { getPhoto } from "@/lib/s3";
+import { getTenantConfigFromRequest } from "@/lib/tenant";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
   try {
-    const { bytes, mimeType } = await getPhoto(id);
+    const config = getTenantConfigFromRequest(req);
+    const { bytes, mimeType } = await getPhoto(config, id);
     return new NextResponse(new Uint8Array(bytes), {
       headers: {
         "Content-Type": mimeType,

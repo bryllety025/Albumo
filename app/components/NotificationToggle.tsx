@@ -11,7 +11,11 @@ import { getStoredCount, PHOTO_LIMIT } from "@/lib/photoStorage";
 
 type Status = "unsupported" | "ios-not-installed" | "idle" | "granted" | "denied";
 
-export default function NotificationToggle() {
+type Props = {
+  eventName: string;
+};
+
+export default function NotificationToggle({ eventName }: Props) {
   const [status, setStatus] = useState<Status>("idle");
 
   useEffect(() => {
@@ -38,12 +42,12 @@ export default function NotificationToggle() {
       if (granted) {
         setStatus("granted");
         const remaining = Math.max(PHOTO_LIMIT - getStoredCount(), 0);
-        updatePhotoCountNotification(remaining);
+        updatePhotoCountNotification(remaining, eventName);
       } else {
         setStatus("denied");
       }
     })();
-  }, []);
+  }, [eventName]);
 
   if (status === "ios-not-installed") {
     return (
