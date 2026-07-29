@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { uploadToDrive } from "@/lib/googleDrive";
+import { uploadPhoto } from "@/lib/s3";
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const bytes = Buffer.from(await file.arrayBuffer());
-    const fileId = await uploadToDrive(
+    const fileId = await uploadPhoto(
       bytes,
       filename,
       file.type || "image/jpeg"
@@ -23,6 +23,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ fileId });
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ error: "Upload to Drive failed" }, { status: 500 });
+    return NextResponse.json({ error: "Upload to S3 failed" }, { status: 500 });
   }
 }

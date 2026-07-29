@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDriveFile } from "@/lib/googleDrive";
+import { getPhoto } from "@/lib/s3";
 
 export async function GET(
   _req: Request,
@@ -7,7 +7,7 @@ export async function GET(
 ) {
   const { id } = await params;
   try {
-    const { bytes, mimeType, name } = await getDriveFile(id);
+    const { bytes, mimeType, name } = await getPhoto(id);
     const safeName = name.replace(/"/g, "");
     return new NextResponse(new Uint8Array(bytes), {
       headers: {

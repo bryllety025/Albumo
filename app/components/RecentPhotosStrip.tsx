@@ -1,29 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import type { DriveFile } from "@/lib/googleDrive";
+import { usePhotos } from "@/lib/usePhotos";
 
 const RECENT_COUNT = 10;
 
 export default function RecentPhotosStrip() {
-  const [files, setFiles] = useState<DriveFile[] | null>(null);
+  const files = usePhotos();
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/photos")
-      .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((data: { files: DriveFile[] }) => {
-        if (!cancelled) setFiles(data.files);
-      })
-      .catch(() => {
-        if (!cancelled) setFiles([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const recent = files ? files.slice(0, RECENT_COUNT) : [];
 
