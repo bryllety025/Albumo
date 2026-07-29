@@ -1,26 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { LayoutGrid, ChevronRight } from "lucide-react";
+import { usePhotos } from "@/lib/usePhotos";
 
 export default function ViewGalleryButton() {
-  const [count, setCount] = useState<number | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/photos")
-      .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((data: { files: { id: string }[] }) => {
-        if (!cancelled) setCount(data.files.length);
-      })
-      .catch(() => {
-        if (!cancelled) setCount(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const files = usePhotos();
+  const count = files ? files.length : null;
 
   return (
     <Link

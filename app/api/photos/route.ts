@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listPhotos } from "@/lib/googleDrive";
+import { listPhotos } from "@/lib/s3";
 
 export async function GET() {
   try {
@@ -8,7 +8,7 @@ export async function GET() {
   } catch (err) {
     console.error(err);
     return NextResponse.json(
-      { error: "Couldn't load photos from Drive" },
+      { error: "Couldn't load photos from S3" },
       { status: 500 }
     );
   }

@@ -22,7 +22,7 @@ const EVENT_NAME = process.env.NEXT_PUBLIC_EVENT_NAME || "Ellen and Brylle Weddi
 export const metadata: Metadata = {
   title: EVENT_NAME,
   description:
-    "Take a photo and share it straight to our wedding Google Drive album.",
+    "Take a photo and share it straight to our wedding photo album.",
   icons: {
     icon: [
       { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },

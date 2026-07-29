@@ -12,7 +12,7 @@ import {
   List,
   X,
 } from "lucide-react";
-import type { DriveFile } from "@/lib/googleDrive";
+import type { PhotoFile } from "@/lib/s3";
 import PhotoGrid from "./gallery/PhotoGrid";
 import PhotoList from "./gallery/PhotoList";
 
@@ -32,7 +32,7 @@ function triggerDownload(id: string, name: string) {
 }
 
 export default function GalleryView() {
-  const [photos, setPhotos] = useState<DriveFile[] | null>(null);
+  const [photos, setPhotos] = useState<PhotoFile[] | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [layout, setLayout] = useState<Layout>("grid");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
@@ -45,7 +45,7 @@ export default function GalleryView() {
     try {
       const res = await fetch("/api/photos");
       if (!res.ok) throw new Error(await res.text());
-      const data = (await res.json()) as { files: DriveFile[] };
+      const data = (await res.json()) as { files: PhotoFile[] };
       setPhotos(data.files);
       setStatus("loaded");
     } catch {

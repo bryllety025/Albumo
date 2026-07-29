@@ -1,10 +1,10 @@
 "use client";
 
 import { Check, Download } from "lucide-react";
-import type { DriveFile } from "@/lib/googleDrive";
+import type { PhotoFile } from "@/lib/s3";
 
 type PhotoListProps = {
-  photos: DriveFile[];
+  photos: PhotoFile[];
   selectedIds: Set<string>;
   onToggleSelected: (id: string) => void;
   onOpenPreview: (index: number) => void;

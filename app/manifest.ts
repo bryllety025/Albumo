@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: process.env.NEXT_PUBLIC_EVENT_NAME || "Ellen and Brylle Wedding",
     short_name: process.env.NEXT_PUBLIC_EVENT_SHORT_NAME || "E&B Wedding",
     description:
-      "Take a photo and share it straight to our wedding Google Drive album.",
+      "Take a photo and share it straight to our wedding photo album.",
     start_url: "/",
     display: "standalone",
     background_color: "#f7f7f8",

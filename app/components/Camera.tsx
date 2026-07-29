@@ -789,7 +789,7 @@ export default function Camera() {
       }
     } catch {
       setSaveStatus("error");
-      setSaveError("Couldn't save to Google Drive. Check your connection and try again.");
+      setSaveError("Couldn't share your photo. Check your connection and try again.");
     }
   }, [previewItems, photoCount]);
 
@@ -1113,8 +1113,8 @@ export default function Camera() {
             <div className="flex flex-col items-center gap-4 pb-4">
               <p className="text-ivory">
                 {previewItems.length > 1
-                  ? `Saved ${previewItems.filter((p) => p.selected).length} photos to Google Drive!`
-                  : "Saved to Google Drive!"}
+                  ? `${previewItems.filter((p) => p.selected).length} photos have been shared to the album!`
+                  : "Photo has been shared to the album!"}
               </p>
               <button
                 onClick={handleDone}
