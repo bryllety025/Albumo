@@ -13,17 +13,24 @@ function keyPrefix(folder: string): string {
   return cleaned ? `${cleaned}/` : "";
 }
 
-// Constructed lazily (per call, not at module load) so that importing this
-// module — which happens during `next build`'s page-data collection — never
-// requires real AWS credentials to be present.
+// All tenants share the same AWS credentials/bucket (see lib/tenant.ts), so
+// a single client is built once and reused for every request. It's built
+// lazily (on first use, not at module load) so that importing this module —
+// which happens during `next build`'s page-data collection — never requires
+// real AWS credentials to be present.
+let client: S3Client | undefined;
+
 function getClient(config: TenantConfig): S3Client {
-  return new S3Client({
-    region: config.awsRegion,
-    credentials: {
-      accessKeyId: config.awsAccessKeyId,
-      secretAccessKey: config.awsSecretAccessKey,
-    },
-  });
+  if (!client) {
+    client = new S3Client({
+      region: config.awsRegion,
+      credentials: {
+        accessKeyId: config.awsAccessKeyId,
+        secretAccessKey: config.awsSecretAccessKey,
+      },
+    });
+  }
+  return client;
 }
 
 export type PhotoFile = {

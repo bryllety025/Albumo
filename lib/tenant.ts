@@ -1,8 +1,8 @@
 import { headers } from "next/headers";
+import { TENANTS, TENANT_IDS, type TenantId } from "./tenants.config";
 
-export type TenantId = "app" | "demo";
+export type { TenantId };
 
-const TENANT_IDS = ["app", "demo"] as const;
 const DEFAULT_TENANT: TenantId = "app";
 
 export type TenantConfig = {
@@ -33,17 +33,18 @@ function readTenantId(get: (key: string) => string | null): TenantId {
   return isTenantId(fromProxyHeader) ? fromProxyHeader : resolveTenantId(get("host"));
 }
 
-// Every tenant's AWS/S3 credentials and bucket live behind their own
-// prefixed env vars (APP_AWS_S3_BUCKET, DEMO_AWS_S3_BUCKET, ...) so a
-// missing var fails loudly instead of silently falling back to another
-// tenant's bucket and mixing photos between events.
+// AWS credentials and the S3 bucket are shared across every tenant (a single
+// unprefixed set of env vars) — only the S3 key prefix differs per tenant,
+// and it's always the tenant_id itself. Event name/short name come from
+// tenants.config.ts.
 export function getTenantConfig(id: TenantId): TenantConfig {
-  const prefix = id.toUpperCase();
   const require = (key: string): string => {
-    const value = process.env[`${prefix}_${key}`];
-    if (!value) throw new Error(`Missing required env var ${prefix}_${key}`);
+    const value = process.env[key];
+    if (!value) throw new Error(`Missing required env var ${key}`);
     return value;
   };
+
+  const { eventName, eventShortName } = TENANTS[id];
 
   return {
     id,
@@ -51,9 +52,9 @@ export function getTenantConfig(id: TenantId): TenantConfig {
     awsAccessKeyId: require("AWS_ACCESS_KEY_ID"),
     awsSecretAccessKey: require("AWS_SECRET_ACCESS_KEY"),
     awsS3Bucket: require("AWS_S3_BUCKET"),
-    awsS3Folder: process.env[`${prefix}_AWS_S3_FOLDER`]?.trim() ?? "",
-    eventName: process.env[`${prefix}_EVENT_NAME`] || "Ellen and Brylle Wedding",
-    eventShortName: process.env[`${prefix}_EVENT_SHORT_NAME`] || "E&B Wedding",
+    awsS3Folder: id,
+    eventName,
+    eventShortName,
   };
 }
 
