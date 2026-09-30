@@ -16,7 +16,6 @@ import {
   ChevronRight,
 } from "lucide-react";
 import {
-  PHOTO_LIMIT,
   getStoredCount,
   incrementStoredCount,
   addStoredPhoto,
@@ -247,9 +246,10 @@ function buildFilename(ext: string) {
 
 type Props = {
   eventName: string;
+  photoLimit: number;
 };
 
-export default function Camera({ eventName }: Props) {
+export default function Camera({ eventName, photoLimit }: Props) {
   const libraryInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -286,7 +286,7 @@ export default function Camera({ eventName }: Props) {
   }, []);
 
   const remaining =
-    photoCount === null ? PHOTO_LIMIT : Math.max(PHOTO_LIMIT - photoCount, 0);
+    photoCount === null ? photoLimit : Math.max(photoLimit - photoCount, 0);
   const limitReached = photoCount !== null && remaining <= 0;
 
   const stopStream = useCallback(() => {
@@ -760,7 +760,7 @@ export default function Camera({ eventName }: Props) {
     setSaveError(null);
 
     const currentRemaining =
-      photoCount === null ? PHOTO_LIMIT : Math.max(PHOTO_LIMIT - photoCount, 0);
+      photoCount === null ? photoLimit : Math.max(photoLimit - photoCount, 0);
     const capped = toSave.slice(0, currentRemaining);
     const skippedForLimit = toSave.length - capped.length;
 
@@ -781,10 +781,10 @@ export default function Camera({ eventName }: Props) {
 
         runningCount = incrementStoredCount();
         const thumb = await createThumbnail(item.url, 640, 0.72);
-        addStoredPhoto(thumb);
+        addStoredPhoto(thumb, photoLimit);
       }
       setPhotoCount(runningCount);
-      updatePhotoCountNotification(Math.max(PHOTO_LIMIT - runningCount, 0), eventName);
+      updatePhotoCountNotification(Math.max(photoLimit - runningCount, 0), eventName);
       setSaveStatus("success");
       if (skippedForLimit > 0) {
         setSaveError(
@@ -795,7 +795,7 @@ export default function Camera({ eventName }: Props) {
       setSaveStatus("error");
       setSaveError("Couldn't share your photo. Check your connection and try again.");
     }
-  }, [previewItems, photoCount, eventName]);
+  }, [previewItems, photoCount, eventName, photoLimit]);
 
   if (error) {
     return (
@@ -848,7 +848,7 @@ export default function Camera({ eventName }: Props) {
         (limitReached ? (
           <div className="bg-gray-50 px-6 py-5 text-center">
             <p className="font-medium text-foreground">
-              You&apos;ve shared 20 photos — thank you!
+              You&apos;ve shared {photoLimit} photos — thank you!
             </p>
             <p className="mt-1 text-sm text-gray-500">
               That&apos;s the limit per device for tonight. Ask a friend to

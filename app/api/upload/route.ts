@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { uploadPhoto } from "@/lib/s3";
-import { getTenantConfigFromRequest } from "@/lib/tenant";
+import { getEventConfigFromRequest } from "@/lib/event";
 
 export async function POST(req: NextRequest) {
+  const config = getEventConfigFromRequest(req);
+  if (!config) {
+    return NextResponse.json(
+      { error: "No event context. Open your invite link first." },
+      { status: 400 }
+    );
+  }
+
   const formData = await req.formData();
   const file = formData.get("file");
   const filename = formData.get("filename");
@@ -15,7 +23,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const config = getTenantConfigFromRequest(req);
     const bytes = Buffer.from(await file.arrayBuffer());
     const fileId = await uploadPhoto(
       config,

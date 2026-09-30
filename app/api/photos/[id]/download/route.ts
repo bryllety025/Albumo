@@ -1,14 +1,21 @@
 import { NextResponse } from "next/server";
 import { getPhoto } from "@/lib/s3";
-import { getTenantConfigFromRequest } from "@/lib/tenant";
+import { getEventConfigFromRequest } from "@/lib/event";
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const config = getEventConfigFromRequest(req);
+  if (!config) {
+    return NextResponse.json(
+      { error: "No event context. Open your invite link first." },
+      { status: 400 }
+    );
+  }
+
   try {
-    const config = getTenantConfigFromRequest(req);
     const { bytes, mimeType, name } = await getPhoto(config, id);
     const safeName = name.replace(/"/g, "");
     return new NextResponse(new Uint8Array(bytes), {

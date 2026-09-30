@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import "./globals.css";
-import { getRequestTenantConfig } from "@/lib/tenant";
+import { getRequestEventConfig } from "@/lib/event";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,14 +18,14 @@ const playfairDisplay = Playfair_Display({
   subsets: ["latin"],
 });
 
-// Reads the request's Host header (via the tenant it resolves to) so the
-// title reflects whichever subdomain served the request, rather than a
+// Reads the event this device is registered to (see lib/event.ts) so the
+// title reflects whichever event's link the guest opened, rather than a
 // value baked in at build time.
 export async function generateMetadata(): Promise<Metadata> {
-  const { eventName } = await getRequestTenantConfig();
+  const config = await getRequestEventConfig();
 
   return {
-    title: eventName,
+    title: config?.eventName ?? "Albumo",
     description:
       "Take a photo and share it straight to our wedding photo album.",
     icons: {

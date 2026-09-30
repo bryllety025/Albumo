@@ -1,4 +1,7 @@
-export const PHOTO_LIMIT = 20;
+// Used only if the admin-configured limit (fetched server-side — see
+// lib/backendEvents.ts's fetchPhotoLimit) couldn't be read; keeps the app
+// working with the old fixed behaviour rather than breaking.
+export const DEFAULT_PHOTO_LIMIT = 20;
 
 const COUNT_KEY = "wedding-photos-count";
 const LAST_PHOTO_KEY = "wedding-photos-last-photo"; // legacy, read-only now
@@ -43,8 +46,8 @@ export function getStoredPhotos(): string[] {
   }
 }
 
-export function addStoredPhoto(dataUrl: string): string[] {
-  const next = [dataUrl, ...getStoredPhotos()].slice(0, PHOTO_LIMIT);
+export function addStoredPhoto(dataUrl: string, limit: number = DEFAULT_PHOTO_LIMIT): string[] {
+  const next = [dataUrl, ...getStoredPhotos()].slice(0, limit);
   try {
     localStorage.setItem(PHOTOS_KEY, JSON.stringify(next));
   } catch {

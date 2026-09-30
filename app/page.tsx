@@ -5,10 +5,25 @@ import Camera from "./components/Camera";
 import ViewGalleryButton from "./components/ViewGalleryButton";
 import RecentPhotosStrip from "./components/RecentPhotosStrip";
 import NotificationToggle from "./components/NotificationToggle";
-import { getRequestTenantConfig } from "@/lib/tenant";
+import { getRequestEventConfig } from "@/lib/event";
+import { fetchPhotoLimit } from "@/lib/backendEvents";
 
 export default async function Home() {
-  const { eventName } = await getRequestTenantConfig();
+  const [config, photoLimit] = await Promise.all([getRequestEventConfig(), fetchPhotoLimit()]);
+
+  if (!config) {
+    return (
+      <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 bg-background px-6 text-center text-foreground">
+        <Image src={logo} alt="Albumo" className="h-8 w-auto" priority />
+        <h1 className="text-xl font-semibold">This link isn&apos;t recognized</h1>
+        <p className="max-w-xs text-sm text-gray-500">
+          Open the invite link you were sent to join an event&apos;s photo album.
+        </p>
+      </div>
+    );
+  }
+
+  const { eventName } = config;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background px-5 pb-6 pt-5 text-foreground">
@@ -33,13 +48,13 @@ export default async function Home() {
       </div>
 
       <div className="flex shrink-0 flex-col overflow-hidden rounded-2xl">
-        <Camera eventName={eventName} />
-        <ViewGalleryButton />
+        <Camera eventName={eventName} photoLimit={photoLimit} />
+        <ViewGalleryButton photoLimit={photoLimit} />
       </div>
 
       <RecentPhotosStrip />
 
-      <NotificationToggle eventName={eventName} />
+      <NotificationToggle eventName={eventName} photoLimit={photoLimit} />
     </div>
   );
 }

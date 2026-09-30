@@ -1,12 +1,12 @@
 import type { MetadataRoute } from "next";
-import { getRequestTenantConfig } from "@/lib/tenant";
+import { getRequestEventConfig } from "@/lib/event";
 
 export default async function manifest(): Promise<MetadataRoute.Manifest> {
-  const { eventName, eventShortName } = await getRequestTenantConfig();
+  const config = await getRequestEventConfig();
 
   return {
-    name: eventName,
-    short_name: eventShortName,
+    name: config?.eventName ?? "Albumo",
+    short_name: config?.eventShortName ?? "Albumo",
     description:
       "Take a photo and share it straight to our wedding photo album.",
     start_url: "/",

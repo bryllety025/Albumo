@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { LayoutGrid, ChevronRight } from "lucide-react";
 import { usePhotos } from "@/lib/usePhotos";
-import { getStoredCount, PHOTO_LIMIT } from "@/lib/photoStorage";
+import { getStoredCount } from "@/lib/photoStorage";
 import type { PhotoFile } from "@/lib/s3";
 
 const ROTATE_INTERVAL_MS = 5000;
@@ -21,7 +21,7 @@ type Slots = {
   front: 0 | 1;
 };
 
-export default function ViewGalleryButton() {
+export default function ViewGalleryButton({ photoLimit }: { photoLimit: number }) {
   const files = usePhotos();
   const count = files ? files.length : null;
 
@@ -123,7 +123,7 @@ export default function ViewGalleryButton() {
           </span>
           {yourCount !== null && (
             <span className="block text-xs text-white/60">
-              You&apos;ve uploaded {Math.min(yourCount, PHOTO_LIMIT)} of {PHOTO_LIMIT}
+              You&apos;ve uploaded {Math.min(yourCount, photoLimit)} of {photoLimit}
             </span>
           )}
         </span>

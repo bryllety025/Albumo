@@ -4,7 +4,7 @@ import {
   ListObjectsV2Command,
   GetObjectCommand,
 } from "@aws-sdk/client-s3";
-import type { TenantConfig } from "./tenant";
+import type { EventConfig } from "./event";
 
 function keyPrefix(folder: string): string {
   // Normalized to have no leading/trailing slashes, then re-joined with a
@@ -13,14 +13,14 @@ function keyPrefix(folder: string): string {
   return cleaned ? `${cleaned}/` : "";
 }
 
-// All tenants share the same AWS credentials/bucket (see lib/tenant.ts), so
+// Every event shares the same AWS credentials/bucket (see lib/event.ts), so
 // a single client is built once and reused for every request. It's built
 // lazily (on first use, not at module load) so that importing this module —
 // which happens during `next build`'s page-data collection — never requires
 // real AWS credentials to be present.
 let client: S3Client | undefined;
 
-function getClient(config: TenantConfig): S3Client {
+function getClient(config: EventConfig): S3Client {
   if (!client) {
     client = new S3Client({
       region: config.awsRegion,
@@ -60,7 +60,7 @@ function guessMimeType(filename: string): string {
 // configurable folder prefix is only ever applied internally when talking
 // to S3, never exposed to the client.
 export async function uploadPhoto(
-  config: TenantConfig,
+  config: EventConfig,
   bytes: Buffer,
   filename: string,
   mimeType: string
@@ -76,7 +76,7 @@ export async function uploadPhoto(
   return filename;
 }
 
-export async function listPhotos(config: TenantConfig): Promise<PhotoFile[]> {
+export async function listPhotos(config: EventConfig): Promise<PhotoFile[]> {
   const prefix = keyPrefix(config.awsS3Folder);
   const client = getClient(config);
   const files: PhotoFile[] = [];
@@ -110,7 +110,7 @@ export async function listPhotos(config: TenantConfig): Promise<PhotoFile[]> {
 }
 
 export async function getPhoto(
-  config: TenantConfig,
+  config: EventConfig,
   id: string
 ): Promise<{ bytes: Buffer; mimeType: string; name: string }> {
   const res = await getClient(config).send(
