@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { uploadPhoto } from "@/lib/s3";
 import { getEventConfigFromRequest } from "@/lib/event";
+import { registerUpload } from "@/lib/backendEvents";
 
 export async function POST(req: NextRequest) {
   const config = getEventConfigFromRequest(req);
@@ -14,6 +15,8 @@ export async function POST(req: NextRequest) {
   const formData = await req.formData();
   const file = formData.get("file");
   const filename = formData.get("filename");
+  const uploaderNameField = formData.get("uploaderName");
+  const uploaderName = typeof uploaderNameField === "string" ? uploaderNameField : undefined;
 
   if (!(file instanceof Blob) || typeof filename !== "string") {
     return NextResponse.json(
@@ -30,6 +33,7 @@ export async function POST(req: NextRequest) {
       filename,
       file.type || "image/jpeg"
     );
+    await registerUpload(config.slug, fileId, uploaderName);
     return NextResponse.json({ fileId });
   } catch (err) {
     console.error(err);

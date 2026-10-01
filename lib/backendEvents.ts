@@ -53,3 +53,25 @@ export async function fetchPhotoLimit(): Promise<number> {
     return FALLBACK_PHOTO_LIMIT;
   }
 }
+
+// Tells albumo-backend who uploaded a file, so the event owner can see it in
+// their dashboard. Best-effort and never throws -- the photo is already saved
+// to S3 by the time this runs, so a failure here shouldn't undo the upload.
+export async function registerUpload(slug: string, name: string, uploaderName?: string): Promise<void> {
+  try {
+    const res = await fetch(`${EVENTS_API_URL}/events/public/${encodeURIComponent(slug)}/media`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": process.env.EVENTS_API_KEY ?? "",
+      },
+      body: JSON.stringify({ name, uploaderName: uploaderName || undefined }),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      console.error(`Failed to register uploader name with albumo-backend: ${res.status}`);
+    }
+  } catch (err) {
+    console.error("Failed to register uploader name with albumo-backend:", err);
+  }
+}

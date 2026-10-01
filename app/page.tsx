@@ -5,6 +5,7 @@ import Camera from "./components/Camera";
 import ViewGalleryButton from "./components/ViewGalleryButton";
 import RecentPhotosStrip from "./components/RecentPhotosStrip";
 import NotificationToggle from "./components/NotificationToggle";
+import GuestNameGate from "./components/GuestNameGate";
 import { getRequestEventConfig } from "@/lib/event";
 import { fetchPhotoLimit } from "@/lib/backendEvents";
 
@@ -27,6 +28,7 @@ export default async function Home() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background px-5 pb-6 pt-5 text-foreground">
+      <GuestNameGate />
       <div className="flex shrink-0 items-center justify-between">
         <Image src={logo} alt="Albumo" className="h-8 w-auto" priority />
         <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-medium text-indigo-600">

@@ -21,6 +21,7 @@ import {
   addStoredPhoto,
   createThumbnail,
 } from "@/lib/photoStorage";
+import { getStoredGuestName } from "@/lib/guestName";
 import { updatePhotoCountNotification } from "@/lib/notifications";
 
 // Filters are stored as structured ops rather than CSS strings so the live
@@ -742,12 +743,6 @@ export default function Camera({ eventName, photoLimit }: Props) {
     }
   }, [source, openLive, resetPreview]);
 
-  const handleDone = useCallback(() => {
-    resetPreview();
-    setStage("idle");
-    setSource(null);
-  }, [resetPreview]);
-
   const handlePromptScreenCaptureClick = useCallback(() => {
     openLive("environment", { resetSettings: true });
   }, [openLive]);
@@ -765,12 +760,14 @@ export default function Camera({ eventName, photoLimit }: Props) {
     const skippedForLimit = toSave.length - capped.length;
 
     try {
+      const guestName = getStoredGuestName();
       let runningCount = photoCount ?? 0;
       for (const item of capped) {
         const filename = buildFilename(item.ext);
         const formData = new FormData();
         formData.append("file", item.blob, filename);
         formData.append("filename", filename);
+        if (guestName) formData.append("uploaderName", guestName);
 
         const res = await fetch("/api/upload", {
           method: "POST",
@@ -1121,7 +1118,7 @@ export default function Camera({ eventName, photoLimit }: Props) {
                   : "Photo has been shared to the album!"}
               </p>
               <button
-                onClick={handleDone}
+                onClick={handleRetry}
                 className="inline-flex items-center gap-2 rounded-full bg-navy-900 px-6 py-3 font-medium text-ivory transition-colors hover:bg-navy-900/90"
               >
                 <CameraIcon size={18} strokeWidth={1.75} />
