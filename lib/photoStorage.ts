@@ -1,11 +1,5 @@
-// Used only if the admin-configured limit (fetched server-side — see
-// lib/backendEvents.ts's fetchPhotoLimit) couldn't be read; keeps the app
-// working with the old fixed behaviour rather than breaking.
-export const DEFAULT_PHOTO_LIMIT = 20;
-
 const COUNT_KEY = "wedding-photos-count";
-const LAST_PHOTO_KEY = "wedding-photos-last-photo"; // legacy, read-only now
-const PHOTOS_KEY = "wedding-photos-history";
+const MY_PHOTOS_KEY = "wedding-photos-mine";
 
 export function getStoredCount(): number {
   try {
@@ -40,30 +34,53 @@ export function decrementStoredCount(): number {
   return next;
 }
 
-export function getStoredPhotos(): string[] {
+// One entry per photo this device has successfully uploaded, so the guest
+// can look back at what they've shared and delete one if they want to
+// retake it. `id` is the S3 key the upload returned — the same value the
+// delete API route and the uploader-token check key off of.
+export type MyPhoto = {
+  id: string;
+  thumbnail: string;
+  uploadedAt: number;
+};
+
+export function getMyPhotos(): MyPhoto[] {
   try {
-    const raw = localStorage.getItem(PHOTOS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return parsed.filter((p): p is string => typeof p === "string");
-      }
-    }
-    // One-time migration: seed from the old single-photo key so a device
-    // that already saved a photo before this upgrade doesn't lose it.
-    const legacy = localStorage.getItem(LAST_PHOTO_KEY);
-    return legacy ? [legacy] : [];
+    const raw = localStorage.getItem(MY_PHOTOS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (p): p is MyPhoto =>
+        p &&
+        typeof p.id === "string" &&
+        typeof p.thumbnail === "string" &&
+        typeof p.uploadedAt === "number"
+    );
   } catch {
     return [];
   }
 }
 
-export function addStoredPhoto(dataUrl: string, limit: number = DEFAULT_PHOTO_LIMIT): string[] {
-  const next = [dataUrl, ...getStoredPhotos()].slice(0, limit);
+export function addMyPhoto(id: string, thumbnail: string): MyPhoto[] {
+  const next = [
+    { id, thumbnail, uploadedAt: Date.now() },
+    ...getMyPhotos().filter((p) => p.id !== id),
+  ];
   try {
-    localStorage.setItem(PHOTOS_KEY, JSON.stringify(next));
+    localStorage.setItem(MY_PHOTOS_KEY, JSON.stringify(next));
   } catch {
     // Quota exceeded/unavailable — `next` still drives state for this session.
+  }
+  return next;
+}
+
+export function removeMyPhoto(id: string): MyPhoto[] {
+  const next = getMyPhotos().filter((p) => p.id !== id);
+  try {
+    localStorage.setItem(MY_PHOTOS_KEY, JSON.stringify(next));
+  } catch {
+    // See addMyPhoto — safe to ignore.
   }
   return next;
 }

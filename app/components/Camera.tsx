@@ -13,19 +13,26 @@ import {
   ZapOff,
   Images,
   Check,
+  ChevronLeft,
   ChevronRight,
   Loader2,
   AlertCircle,
+  Trash2,
+  Download,
 } from "lucide-react";
 import {
   getStoredCount,
   incrementStoredCount,
   decrementStoredCount,
-  addStoredPhoto,
   createThumbnail,
+  getMyPhotos,
+  addMyPhoto,
+  removeMyPhoto,
+  type MyPhoto,
 } from "@/lib/photoStorage";
 import { getStoredGuestName } from "@/lib/guestName";
 import { updatePhotoCountNotification } from "@/lib/notifications";
+import { getOrCreateUploaderToken } from "@/lib/uploaderToken";
 
 // Filters are stored as structured ops rather than CSS strings so the live
 // preview (CSS on the <video>) and the captured photo (a colour matrix applied
@@ -246,6 +253,7 @@ type UploadJob = {
   id: number;
   blob: Blob;
   filename: string;
+  thumbnail: string;
   uploaderName?: string;
   status: "pending" | "uploading" | "error";
 };
@@ -292,6 +300,11 @@ export default function Camera({ eventName, photoLimit }: Props) {
   const [photoCount, setPhotoCount] = useState<number | null>(null);
   const [uploadQueue, setUploadQueue] = useState<UploadJob[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+  const [myPhotos, setMyPhotos] = useState<MyPhoto[]>([]);
+  const [myPhotosOpen, setMyPhotosOpen] = useState(false);
+  const [myPhotoPreviewIndex, setMyPhotoPreviewIndex] = useState<number | null>(null);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const uploaderTokenRef = useRef<string | null>(null);
   const nextJobIdRef = useRef(0);
   // Source of truth for the queue; `uploadQueue` state is just a mirror of
   // this kept in sync via syncQueue() so the UI re-renders reactively.
@@ -304,6 +317,8 @@ export default function Camera({ eventName, photoLimit }: Props) {
 
   useEffect(() => {
     setPhotoCount(getStoredCount());
+    setMyPhotos(getMyPhotos());
+    uploaderTokenRef.current = getOrCreateUploaderToken();
   }, []);
 
   const showToast = useCallback((message: string) => {
@@ -337,13 +352,16 @@ export default function Camera({ eventName, photoLimit }: Props) {
           formData.append("file", job.blob, job.filename);
           formData.append("filename", job.filename);
           if (job.uploaderName) formData.append("uploaderName", job.uploaderName);
+          if (uploaderTokenRef.current) formData.append("uploaderToken", uploaderTokenRef.current);
           const res = await fetch("/api/upload", {
             method: "POST",
             body: formData,
           });
           if (!res.ok) throw new Error(await res.text());
+          const data = (await res.json()) as { fileId: string };
           queueRef.current = queueRef.current.filter((j) => j !== job);
           syncQueue();
+          setMyPhotos(addMyPhoto(data.fileId, job.thumbnail));
         } catch {
           job.status = "error";
           syncQueue();
@@ -356,10 +374,10 @@ export default function Camera({ eventName, photoLimit }: Props) {
   }, [syncQueue, showToast]);
 
   const enqueueUpload = useCallback(
-    (blob: Blob, filename: string, uploaderName?: string) => {
+    (blob: Blob, filename: string, thumbnail: string, uploaderName?: string) => {
       queueRef.current = [
         ...queueRef.current,
-        { id: nextJobIdRef.current++, blob, filename, uploaderName, status: "pending" },
+        { id: nextJobIdRef.current++, blob, filename, thumbnail, uploaderName, status: "pending" },
       ];
       syncQueue();
       processQueue();
@@ -386,6 +404,76 @@ export default function Camera({ eventName, photoLimit }: Props) {
       setPhotoCount(next);
     }
   }, [photoCount, syncQueue]);
+
+  // Deleting a shared photo frees the limit slot it was taking up, same as
+  // giving up on a failed upload above. Returns whether it actually succeeded,
+  // so callers like the full-screen preview know whether it's safe to move on.
+  const handleDeletePhoto = useCallback(
+    async (photo: MyPhoto): Promise<boolean> => {
+      setDeletingIds((prev) => new Set(prev).add(photo.id));
+      try {
+        const res = await fetch(`/api/photos/${encodeURIComponent(photo.id)}`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uploaderToken: uploaderTokenRef.current }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        setMyPhotos(removeMyPhoto(photo.id));
+        const next = decrementStoredCount();
+        setPhotoCount(next);
+        updatePhotoCountNotification(Math.max(photoLimit - next, 0), eventName);
+        return true;
+      } catch {
+        showToast("Couldn't delete that photo. Check your connection and try again.");
+        return false;
+      } finally {
+        setDeletingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(photo.id);
+          return next;
+        });
+      }
+    },
+    [photoLimit, eventName, showToast]
+  );
+
+  const closeMyPhotos = useCallback(() => {
+    setMyPhotosOpen(false);
+    setMyPhotoPreviewIndex(null);
+  }, []);
+
+  const myPhotoPreviewPrev = useCallback(() => {
+    setMyPhotoPreviewIndex((i) =>
+      i === null ? null : i === 0 ? myPhotos.length - 1 : i - 1
+    );
+  }, [myPhotos.length]);
+
+  const myPhotoPreviewNext = useCallback(() => {
+    setMyPhotoPreviewIndex((i) =>
+      i === null ? null : i === myPhotos.length - 1 ? 0 : i + 1
+    );
+  }, [myPhotos.length]);
+
+  const handleDownloadMyPhoto = useCallback((photo: MyPhoto) => {
+    const a = document.createElement("a");
+    a.href = `/api/photos/${encodeURIComponent(photo.id)}/download`;
+    a.download = photo.id;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }, []);
+
+  // On success, closes the full-screen preview back to the grid rather than
+  // trying to show a next photo at a now-shifted index. On failure, stays
+  // open so the guest can see the error toast and retry.
+  const handleDeleteFromMyPhotoPreview = useCallback(
+    async (photo: MyPhoto) => {
+      if (await handleDeletePhoto(photo)) {
+        setMyPhotoPreviewIndex(null);
+      }
+    },
+    [handleDeletePhoto]
+  );
 
   const remaining =
     photoCount === null ? photoLimit : Math.max(photoLimit - photoCount, 0);
@@ -863,8 +951,7 @@ export default function Camera({ eventName, photoLimit }: Props) {
         const filename = buildFilename(item.ext);
         const thumb = await createThumbnail(item.url, 640, 0.72);
         runningCount = incrementStoredCount();
-        addStoredPhoto(thumb, photoLimit);
-        enqueueUpload(item.blob, filename, guestName || undefined);
+        enqueueUpload(item.blob, filename, thumb, guestName || undefined);
       } catch {
         localFailures++;
       }
@@ -971,6 +1058,14 @@ export default function Camera({ eventName, photoLimit }: Props) {
               That&apos;s the limit per device for tonight. Ask a friend to
               snap the next one!
             </p>
+            {myPhotos.length > 0 && (
+              <button
+                onClick={() => setMyPhotosOpen(true)}
+                className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 underline underline-offset-2"
+              >
+                Delete one to free up a slot
+              </button>
+            )}
           </div>
         ) : (
           <div className="flex flex-col">
@@ -1017,6 +1112,30 @@ export default function Camera({ eventName, photoLimit }: Props) {
                 className="shrink-0 text-gray-300"
               />
             </button>
+
+            {myPhotos.length > 0 && (
+              <button
+                onClick={() => setMyPhotosOpen(true)}
+                className="flex items-center gap-3 bg-white px-4 py-4 text-left transition-colors hover:bg-gray-50"
+              >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100">
+                  <Images size={22} strokeWidth={1.75} className="text-emerald-600" />
+                </span>
+                <span className="flex-1">
+                  <span className="block text-base font-semibold text-foreground">
+                    My Photos ({myPhotos.length})
+                  </span>
+                  <span className="block text-sm text-gray-500">
+                    View or delete what you&apos;ve shared
+                  </span>
+                </span>
+                <ChevronRight
+                  size={20}
+                  strokeWidth={1.75}
+                  className="shrink-0 text-gray-300"
+                />
+              </button>
+            )}
           </div>
         ))}
 
@@ -1260,6 +1379,146 @@ export default function Camera({ eventName, photoLimit }: Props) {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {myPhotosOpen && (
+        <div className="fixed inset-0 z-[55] flex flex-col bg-camera-bg">
+          <div className="flex shrink-0 items-center justify-between px-5 py-4">
+            <h2 className="text-lg font-semibold text-ivory">
+              My Photos ({myPhotos.length})
+            </h2>
+            <button
+              onClick={closeMyPhotos}
+              aria-label="Close"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-ivory/15 text-ivory backdrop-blur hover:bg-ivory/25"
+            >
+              <X size={18} strokeWidth={1.75} />
+            </button>
+          </div>
+
+          {myPhotos.length === 0 ? (
+            <p className="px-5 text-sm text-ivory/70">
+              You haven&apos;t shared any photos from this device yet.
+            </p>
+          ) : (
+            <div className="grid flex-1 grid-cols-3 gap-2 overflow-y-auto px-5 pb-6 sm:grid-cols-4">
+              {myPhotos.map((photo, index) => {
+                const deleting = deletingIds.has(photo.id);
+                return (
+                  <div key={photo.id} className="relative aspect-square overflow-hidden rounded-lg">
+                    <button
+                      onClick={() => setMyPhotoPreviewIndex(index)}
+                      aria-label="View photo"
+                      className="h-full w-full"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={photo.thumbnail}
+                        alt="One of your shared photos"
+                        className="h-full w-full object-cover"
+                      />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (
+                          !deleting &&
+                          window.confirm("Delete this photo? This can't be undone.")
+                        ) {
+                          handleDeletePhoto(photo);
+                        }
+                      }}
+                      disabled={deleting}
+                      aria-label="Delete photo"
+                      className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-ivory backdrop-blur transition-colors hover:bg-red-600 disabled:opacity-60"
+                    >
+                      {deleting ? (
+                        <Loader2 size={14} strokeWidth={1.75} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={14} strokeWidth={1.75} />
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {myPhotosOpen && myPhotoPreviewIndex !== null && myPhotos[myPhotoPreviewIndex] && (
+        <div
+          className="fixed inset-0 z-[58] flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setMyPhotoPreviewIndex(null)}
+        >
+          <div
+            className="relative flex max-h-[85vh] max-w-4xl items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={myPhotos[myPhotoPreviewIndex].thumbnail}
+              alt="One of your shared photos"
+              className="max-h-full max-w-full rounded-lg object-contain"
+            />
+
+            {myPhotos.length > 1 && (
+              <>
+                <button
+                  onClick={myPhotoPreviewPrev}
+                  aria-label="Previous photo"
+                  className="absolute left-2 rounded-full bg-white/20 p-2 hover:bg-white/30 sm:left-4"
+                >
+                  <ChevronLeft size={24} className="text-white" strokeWidth={1.75} />
+                </button>
+
+                <button
+                  onClick={myPhotoPreviewNext}
+                  aria-label="Next photo"
+                  className="absolute right-2 rounded-full bg-white/20 p-2 hover:bg-white/30 sm:right-4"
+                >
+                  <ChevronRight size={24} className="text-white" strokeWidth={1.75} />
+                </button>
+              </>
+            )}
+
+            <button
+              onClick={() => handleDownloadMyPhoto(myPhotos[myPhotoPreviewIndex])}
+              aria-label="Download photo"
+              className="absolute left-2 top-2 rounded-full bg-white/20 p-2 hover:bg-white/30"
+            >
+              <Download size={20} className="text-white" strokeWidth={1.75} />
+            </button>
+
+            <button
+              onClick={() => {
+                const photo = myPhotos[myPhotoPreviewIndex];
+                if (
+                  !deletingIds.has(photo.id) &&
+                  window.confirm("Delete this photo? This can't be undone.")
+                ) {
+                  handleDeleteFromMyPhotoPreview(photo);
+                }
+              }}
+              disabled={deletingIds.has(myPhotos[myPhotoPreviewIndex].id)}
+              aria-label="Delete photo"
+              className="absolute right-14 top-2 rounded-full bg-white/20 p-2 hover:bg-red-600 disabled:opacity-60"
+            >
+              {deletingIds.has(myPhotos[myPhotoPreviewIndex].id) ? (
+                <Loader2 size={20} className="animate-spin text-white" strokeWidth={1.75} />
+              ) : (
+                <Trash2 size={20} className="text-white" strokeWidth={1.75} />
+              )}
+            </button>
+
+            <button
+              onClick={() => setMyPhotoPreviewIndex(null)}
+              aria-label="Close preview"
+              className="absolute right-2 top-2 rounded-full bg-white/20 p-2 hover:bg-white/30"
+            >
+              <X size={20} className="text-white" strokeWidth={1.75} />
+            </button>
           </div>
         </div>
       )}

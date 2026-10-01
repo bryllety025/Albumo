@@ -17,6 +17,8 @@ export async function POST(req: NextRequest) {
   const filename = formData.get("filename");
   const uploaderNameField = formData.get("uploaderName");
   const uploaderName = typeof uploaderNameField === "string" ? uploaderNameField : undefined;
+  const uploaderTokenField = formData.get("uploaderToken");
+  const uploaderToken = typeof uploaderTokenField === "string" ? uploaderTokenField : undefined;
 
   if (!(file instanceof Blob) || typeof filename !== "string") {
     return NextResponse.json(
@@ -33,7 +35,7 @@ export async function POST(req: NextRequest) {
       filename,
       file.type || "image/jpeg"
     );
-    await registerUpload(config.slug, fileId, uploaderName);
+    await registerUpload(config.slug, fileId, uploaderName, uploaderToken);
     return NextResponse.json({ fileId });
   } catch (err) {
     console.error(err);

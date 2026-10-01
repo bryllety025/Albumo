@@ -3,6 +3,7 @@ import {
   PutObjectCommand,
   ListObjectsV2Command,
   GetObjectCommand,
+  DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
 import type { EventConfig } from "./event";
 
@@ -107,6 +108,15 @@ export async function listPhotos(config: EventConfig): Promise<PhotoFile[]> {
 
   files.sort((a, b) => Date.parse(b.createdTime) - Date.parse(a.createdTime));
   return files;
+}
+
+export async function deletePhoto(config: EventConfig, id: string): Promise<void> {
+  await getClient(config).send(
+    new DeleteObjectCommand({
+      Bucket: config.awsS3Bucket,
+      Key: `${keyPrefix(config.awsS3Folder)}${id}`,
+    })
+  );
 }
 
 export async function getPhoto(

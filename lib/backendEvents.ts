@@ -55,9 +55,16 @@ export async function fetchPhotoLimit(): Promise<number> {
 }
 
 // Tells albumo-backend who uploaded a file, so the event owner can see it in
-// their dashboard. Best-effort and never throws -- the photo is already saved
-// to S3 by the time this runs, so a failure here shouldn't undo the upload.
-export async function registerUpload(slug: string, name: string, uploaderName?: string): Promise<void> {
+// their dashboard, and records this device's uploaderToken against it so it
+// can later prove ownership to delete it (see deleteGuestUpload below).
+// Best-effort and never throws -- the photo is already saved to S3 by the
+// time this runs, so a failure here shouldn't undo the upload.
+export async function registerUpload(
+  slug: string,
+  name: string,
+  uploaderName?: string,
+  uploaderToken?: string
+): Promise<void> {
   try {
     const res = await fetch(`${EVENTS_API_URL}/events/public/${encodeURIComponent(slug)}/media`, {
       method: "POST",
@@ -65,7 +72,11 @@ export async function registerUpload(slug: string, name: string, uploaderName?: 
         "Content-Type": "application/json",
         "x-api-key": process.env.EVENTS_API_KEY ?? "",
       },
-      body: JSON.stringify({ name, uploaderName: uploaderName || undefined }),
+      body: JSON.stringify({
+        name,
+        uploaderName: uploaderName || undefined,
+        uploaderToken: uploaderToken || undefined,
+      }),
       cache: "no-store",
     });
     if (!res.ok) {
@@ -73,5 +84,32 @@ export async function registerUpload(slug: string, name: string, uploaderName?: 
     }
   } catch (err) {
     console.error("Failed to register uploader name with albumo-backend:", err);
+  }
+}
+
+// Asks albumo-backend to delete a guest's own upload. Unlike registerUpload,
+// this is NOT best-effort: it's the authorization gate for the delete, so a
+// false here must stop the caller from touching S3. Returns false both when
+// the backend refuses (token doesn't match this file's uploader) and on any
+// network/server failure -- the caller treats those the same way: don't delete.
+export async function deleteGuestUpload(
+  slug: string,
+  name: string,
+  uploaderToken: string
+): Promise<boolean> {
+  try {
+    const query = new URLSearchParams({ name, uploaderToken });
+    const res = await fetch(
+      `${EVENTS_API_URL}/events/public/${encodeURIComponent(slug)}/media?${query.toString()}`,
+      {
+        method: "DELETE",
+        headers: { "x-api-key": process.env.EVENTS_API_KEY ?? "" },
+        cache: "no-store",
+      }
+    );
+    return res.ok;
+  } catch (err) {
+    console.error("Failed to delete guest upload via albumo-backend:", err);
+    return false;
   }
 }
