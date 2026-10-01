@@ -28,6 +28,18 @@ export function incrementStoredCount(): number {
   return next;
 }
 
+// Frees up a slot reserved by incrementStoredCount for an upload that was
+// later abandoned (e.g. the guest gave up retrying a failed background upload).
+export function decrementStoredCount(): number {
+  const next = Math.max(getStoredCount() - 1, 0);
+  try {
+    localStorage.setItem(COUNT_KEY, String(next));
+  } catch {
+    // See incrementStoredCount — safe to ignore.
+  }
+  return next;
+}
+
 export function getStoredPhotos(): string[] {
   try {
     const raw = localStorage.getItem(PHOTOS_KEY);

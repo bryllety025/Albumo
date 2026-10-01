@@ -14,10 +14,13 @@ import {
   Images,
   Check,
   ChevronRight,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import {
   getStoredCount,
   incrementStoredCount,
+  decrementStoredCount,
   addStoredPhoto,
   createThumbnail,
 } from "@/lib/photoStorage";
@@ -238,7 +241,14 @@ function applyFilterOps(imageData: ImageData, ops: FilterOp[]) {
 
 type Stage = "idle" | "prompt" | "live" | "preview";
 type Source = "camera" | "library" | null;
-type SaveStatus = "idle" | "saving" | "success" | "error";
+
+type UploadJob = {
+  id: number;
+  blob: Blob;
+  filename: string;
+  uploaderName?: string;
+  status: "pending" | "uploading" | "error";
+};
 
 function buildFilename(ext: string) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -278,13 +288,104 @@ export default function Camera({ eventName, photoLimit }: Props) {
   const [isCapturing, setIsCapturing] = useState(false);
   const [flashActive, setFlashActive] = useState(false);
   const [previewItems, setPreviewItems] = useState<PreviewItem[]>([]);
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [photoCount, setPhotoCount] = useState<number | null>(null);
+  const [uploadQueue, setUploadQueue] = useState<UploadJob[]>([]);
+  const [toast, setToast] = useState<string | null>(null);
+  const nextJobIdRef = useRef(0);
+  // Source of truth for the queue; `uploadQueue` state is just a mirror of
+  // this kept in sync via syncQueue() so the UI re-renders reactively.
+  // Processing is triggered directly by enqueue/retry calls (not an effect
+  // watching state) so a job's own completion can kick off the next one
+  // without bouncing through a render.
+  const queueRef = useRef<UploadJob[]>([]);
+  const isProcessingRef = useRef(false);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setPhotoCount(getStoredCount());
   }, []);
+
+  const showToast = useCallback((message: string) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToast(message);
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 4000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    };
+  }, []);
+
+  const syncQueue = useCallback(() => {
+    setUploadQueue([...queueRef.current]);
+  }, []);
+
+  // Uploads run one at a time in the background so a slow connection never
+  // blocks the guest from taking the next photo.
+  const processQueue = useCallback(async () => {
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
+    try {
+      let job: UploadJob | undefined;
+      while ((job = queueRef.current.find((j) => j.status === "pending"))) {
+        job.status = "uploading";
+        syncQueue();
+        try {
+          const formData = new FormData();
+          formData.append("file", job.blob, job.filename);
+          formData.append("filename", job.filename);
+          if (job.uploaderName) formData.append("uploaderName", job.uploaderName);
+          const res = await fetch("/api/upload", {
+            method: "POST",
+            body: formData,
+          });
+          if (!res.ok) throw new Error(await res.text());
+          queueRef.current = queueRef.current.filter((j) => j !== job);
+          syncQueue();
+        } catch {
+          job.status = "error";
+          syncQueue();
+          showToast("Couldn't share a photo. Check your connection and retry.");
+        }
+      }
+    } finally {
+      isProcessingRef.current = false;
+    }
+  }, [syncQueue, showToast]);
+
+  const enqueueUpload = useCallback(
+    (blob: Blob, filename: string, uploaderName?: string) => {
+      queueRef.current = [
+        ...queueRef.current,
+        { id: nextJobIdRef.current++, blob, filename, uploaderName, status: "pending" },
+      ];
+      syncQueue();
+      processQueue();
+    },
+    [syncQueue, processQueue]
+  );
+
+  const retryFailedUploads = useCallback(() => {
+    queueRef.current = queueRef.current.map((j) =>
+      j.status === "error" ? { ...j, status: "pending" } : j
+    );
+    syncQueue();
+    processQueue();
+  }, [syncQueue, processQueue]);
+
+  // Giving up on a failed upload frees the limit slot it had reserved.
+  const dismissFailedUploads = useCallback(() => {
+    const dropped = queueRef.current.filter((j) => j.status === "error").length;
+    queueRef.current = queueRef.current.filter((j) => j.status !== "error");
+    syncQueue();
+    if (dropped > 0) {
+      let next = photoCount ?? getStoredCount();
+      for (let i = 0; i < dropped; i++) next = decrementStoredCount();
+      setPhotoCount(next);
+    }
+  }, [photoCount, syncQueue]);
 
   const remaining =
     photoCount === null ? photoLimit : Math.max(photoLimit - photoCount, 0);
@@ -462,8 +563,6 @@ export default function Camera({ eventName, photoLimit }: Props) {
         "jpg";
       const url = URL.createObjectURL(selected);
       setPreviewItems([{ url, blob: selected, ext, selected: true }]);
-      setSaveStatus("idle");
-      setSaveError(null);
       setSource("library");
       setStage("preview");
     },
@@ -567,8 +666,6 @@ export default function Camera({ eventName, photoLimit }: Props) {
       if (cancelledRef.current || !item) return;
       stopStream();
       setPreviewItems([item]);
-      setSaveStatus("idle");
-      setSaveError(null);
       setStage("preview");
       return;
     }
@@ -582,8 +679,6 @@ export default function Camera({ eventName, photoLimit }: Props) {
     if (cancelledRef.current) return;
     stopStream();
     setPreviewItems([item]);
-    setSaveStatus("idle");
-    setSaveError(null);
     setStage("preview");
   }, [
     useTorch,
@@ -651,8 +746,6 @@ export default function Camera({ eventName, photoLimit }: Props) {
     setIsCapturing(false);
     stopStream();
     setPreviewItems(items);
-    setSaveStatus("idle");
-    setSaveError(null);
     setStage("preview");
   }, [
     useTorch,
@@ -721,8 +814,6 @@ export default function Camera({ eventName, photoLimit }: Props) {
       prev.forEach((item) => URL.revokeObjectURL(item.url));
       return [];
     });
-    setSaveStatus("idle");
-    setSaveError(null);
   }, []);
 
   const toggleItemSelected = useCallback((index: number) => {
@@ -747,52 +838,81 @@ export default function Camera({ eventName, photoLimit }: Props) {
     openLive("environment", { resetSettings: true });
   }, [openLive]);
 
+  // Saving only does local bookkeeping (thumbnail + limit count) up front —
+  // the actual network upload is queued to run in the background (see the
+  // upload-queue effect above) so the guest isn't stuck waiting on a slow
+  // connection and can go straight back to shooting.
   const handleSave = useCallback(async () => {
     const toSave = previewItems.filter((item) => item.selected);
     if (toSave.length === 0) return;
 
-    setSaveStatus("saving");
-    setSaveError(null);
+    setIsSaving(true);
 
     const currentRemaining =
       photoCount === null ? photoLimit : Math.max(photoLimit - photoCount, 0);
     const capped = toSave.slice(0, currentRemaining);
     const skippedForLimit = toSave.length - capped.length;
 
-    try {
-      const guestName = getStoredGuestName();
-      let runningCount = photoCount ?? 0;
-      for (const item of capped) {
+    const guestName = getStoredGuestName();
+    const startingCount = photoCount ?? 0;
+    let runningCount = startingCount;
+    let localFailures = 0;
+
+    for (const item of capped) {
+      try {
         const filename = buildFilename(item.ext);
-        const formData = new FormData();
-        formData.append("file", item.blob, filename);
-        formData.append("filename", filename);
-        if (guestName) formData.append("uploaderName", guestName);
-
-        const res = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-
-        if (!res.ok) throw new Error(await res.text());
-
-        runningCount = incrementStoredCount();
         const thumb = await createThumbnail(item.url, 640, 0.72);
+        runningCount = incrementStoredCount();
         addStoredPhoto(thumb, photoLimit);
+        enqueueUpload(item.blob, filename, guestName || undefined);
+      } catch {
+        localFailures++;
       }
-      setPhotoCount(runningCount);
-      updatePhotoCountNotification(Math.max(photoLimit - runningCount, 0), eventName);
-      setSaveStatus("success");
-      if (skippedForLimit > 0) {
-        setSaveError(
-          `Saved as many as your remaining limit allowed; ${skippedForLimit} photo(s) were not saved.`
-        );
-      }
-    } catch {
-      setSaveStatus("error");
-      setSaveError("Couldn't share your photo. Check your connection and try again.");
     }
-  }, [previewItems, photoCount, eventName, photoLimit]);
+
+    setPhotoCount(runningCount);
+    if (runningCount !== startingCount) {
+      updatePhotoCountNotification(Math.max(photoLimit - runningCount, 0), eventName);
+    }
+
+    const messages: string[] = [];
+    if (localFailures > 0) {
+      messages.push(
+        `${localFailures} photo${localFailures === 1 ? "" : "s"} couldn't be processed.`
+      );
+    }
+    if (skippedForLimit > 0) {
+      messages.push(
+        `${skippedForLimit} photo${skippedForLimit === 1 ? "" : "s"} skipped — limit reached.`
+      );
+    }
+    if (messages.length > 0) showToast(messages.join(" "));
+
+    const anySucceeded = runningCount !== startingCount;
+    const allSkippedForLimit = capped.length === 0 && toSave.length > 0;
+
+    setIsSaving(false);
+
+    if (anySucceeded || allSkippedForLimit) {
+      resetPreview();
+      if (source === "camera" && runningCount < photoLimit) {
+        openLive();
+      } else {
+        setStage("idle");
+        setSource(null);
+      }
+    }
+  }, [
+    previewItems,
+    photoCount,
+    eventName,
+    photoLimit,
+    source,
+    enqueueUpload,
+    showToast,
+    resetPreview,
+    openLive,
+  ]);
 
   if (error) {
     return (
@@ -1110,61 +1230,88 @@ export default function Camera({ eventName, photoLimit }: Props) {
               </div>
             )}
           </div>
-          {saveStatus === "success" ? (
-            <div className="flex flex-col items-center gap-4 pb-4">
-              <p className="text-ivory">
-                {previewItems.length > 1
-                  ? `${previewItems.filter((p) => p.selected).length} photos have been shared to the album!`
-                  : "Photo has been shared to the album!"}
-              </p>
+          <div className="flex flex-col items-center gap-3 pb-4">
+            <div className="flex gap-4">
               <button
                 onClick={handleRetry}
-                className="inline-flex items-center gap-2 rounded-full bg-navy-900 px-6 py-3 font-medium text-ivory transition-colors hover:bg-navy-900/90"
+                disabled={isSaving}
+                className="inline-flex items-center gap-2 rounded-full bg-ivory/15 px-6 py-3 text-ivory backdrop-blur transition-colors hover:bg-ivory/25 disabled:opacity-50"
               >
-                <CameraIcon size={18} strokeWidth={1.75} />
-                Take Another
+                <RotateCcw size={18} strokeWidth={1.75} />
+                Try again
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="inline-flex items-center gap-2 rounded-full bg-navy-900 px-6 py-3 font-medium text-ivory transition-colors hover:bg-navy-900/90 disabled:opacity-50"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 size={18} strokeWidth={1.75} className="animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud size={18} strokeWidth={1.75} />
+                    Save
+                    {previewItems.length > 1 &&
+                      ` (${previewItems.filter((p) => p.selected).length})`}
+                  </>
+                )}
               </button>
             </div>
-          ) : (
-            <div className="flex flex-col items-center gap-3 pb-4">
-              {saveStatus === "error" && saveError && (
-                <p className="max-w-sm text-center text-sm text-red-400">
-                  {saveError}
-                </p>
-              )}
-              <div className="flex gap-4">
-                <button
-                  onClick={handleRetry}
-                  disabled={saveStatus === "saving"}
-                  className="inline-flex items-center gap-2 rounded-full bg-ivory/15 px-6 py-3 text-ivory backdrop-blur transition-colors hover:bg-ivory/25 disabled:opacity-50"
-                >
-                  <RotateCcw size={18} strokeWidth={1.75} />
-                  Try again
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saveStatus === "saving"}
-                  className="inline-flex items-center gap-2 rounded-full bg-navy-900 px-6 py-3 font-medium text-ivory transition-colors hover:bg-navy-900/90 disabled:opacity-50"
-                >
-                  {saveStatus === "saving" ? (
-                    "Saving..."
-                  ) : saveStatus === "error" ? (
-                    <>
-                      <RotateCcw size={18} strokeWidth={1.75} />
-                      Retry Save
-                    </>
-                  ) : (
-                    <>
-                      <UploadCloud size={18} strokeWidth={1.75} />
-                      Save
-                      {previewItems.length > 1 &&
-                        ` (${previewItems.filter((p) => p.selected).length})`}
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
+          </div>
+        </div>
+      )}
+
+      {uploadQueue.length > 0 && (
+        <div className="pointer-events-none fixed inset-x-0 top-4 z-[60] flex justify-center px-4">
+          {(() => {
+            const failed = uploadQueue.filter((j) => j.status === "error");
+            const active = uploadQueue.length - failed.length;
+            if (failed.length > 0) {
+              return (
+                <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-red-600 px-4 py-2 text-sm text-ivory shadow-lg">
+                  <AlertCircle size={16} strokeWidth={1.75} />
+                  <span>
+                    {failed.length} photo{failed.length === 1 ? "" : "s"} failed to upload
+                  </span>
+                  <button
+                    onClick={retryFailedUploads}
+                    className="rounded-full bg-ivory/20 px-2.5 py-1 text-xs font-medium hover:bg-ivory/30"
+                  >
+                    Retry
+                  </button>
+                  <button
+                    onClick={dismissFailedUploads}
+                    aria-label="Dismiss failed uploads"
+                    className="rounded-full p-1 hover:bg-ivory/20"
+                  >
+                    <X size={14} strokeWidth={1.75} />
+                  </button>
+                </div>
+              );
+            }
+            if (active > 0) {
+              return (
+                <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-navy-900 px-4 py-2 text-sm text-ivory shadow-lg">
+                  <Loader2 size={16} strokeWidth={1.75} className="animate-spin" />
+                  <span>
+                    Uploading {active} photo{active === 1 ? "" : "s"}…
+                  </span>
+                </div>
+              );
+            }
+            return null;
+          })()}
+        </div>
+      )}
+
+      {toast && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-[60] flex justify-center px-4">
+          <div className="pointer-events-auto max-w-sm rounded-full bg-black/80 px-4 py-2.5 text-center text-sm text-ivory shadow-lg">
+            {toast}
+          </div>
         </div>
       )}
     </>
