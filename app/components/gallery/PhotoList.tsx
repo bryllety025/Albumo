@@ -29,7 +29,7 @@ export default function PhotoList({
   onDownload,
 }: PhotoListProps) {
   return (
-    <div className="flex flex-col divide-y divide-gray-100 overflow-y-auto">
+    <div className="flex h-full flex-col divide-y divide-gray-100 overflow-y-auto">
       {photos.map((photo, i) => {
         const selected = selectedIds.has(photo.id);
         return (
