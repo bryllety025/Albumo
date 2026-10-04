@@ -7,6 +7,8 @@ const EVENTS_API_URL = process.env.EVENTS_API_URL ?? "http://localhost:3000";
 export type VerifiedEvent = {
   slug: string;
   eventName: string;
+  /** The event's date, "YYYY-MM-DD". */
+  date: string;
 };
 
 // Returns null for an unknown slug or any network/backend failure — callers
@@ -20,8 +22,8 @@ export async function verifyEventSlug(slug: string): Promise<VerifiedEvent | nul
     });
     if (!res.ok) return null;
 
-    const data = (await res.json()) as { slug: string; title: string };
-    return { slug: data.slug, eventName: data.title };
+    const data = (await res.json()) as { slug: string; title: string; date: string };
+    return { slug: data.slug, eventName: data.title, date: data.date };
   } catch (err) {
     console.error("Failed to verify event slug against albumo-backend:", err);
     return null;

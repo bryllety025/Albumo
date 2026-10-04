@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { uploadPhoto } from "@/lib/s3";
 import { getEventConfigFromRequest } from "@/lib/event";
 import { registerUpload } from "@/lib/backendEvents";
+import { isTodayInManila } from "@/lib/manilaDate";
 
 export async function POST(req: NextRequest) {
   const config = getEventConfigFromRequest(req);
@@ -9,6 +10,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: "No event context. Open your invite link first." },
       { status: 400 }
+    );
+  }
+
+  // The authoritative check: the UI already hides "Take Photo"/"Choose Photo"
+  // outside the event's day, but this is what actually stops a request made
+  // directly (or from a stale page left open since before midnight).
+  if (!isTodayInManila(config.date)) {
+    return NextResponse.json(
+      { error: "Photos can only be shared on the day of the event." },
+      { status: 403 }
     );
   }
 

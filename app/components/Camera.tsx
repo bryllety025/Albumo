@@ -33,6 +33,7 @@ import {
 import { getStoredGuestName } from "@/lib/guestName";
 import { updatePhotoCountNotification } from "@/lib/notifications";
 import { getOrCreateUploaderToken } from "@/lib/uploaderToken";
+import { todayInManila } from "@/lib/manilaDate";
 
 // Filters are stored as structured ops rather than CSS strings so the live
 // preview (CSS on the <video>) and the captured photo (a colour matrix applied
@@ -266,9 +267,23 @@ function buildFilename(ext: string) {
 type Props = {
   eventName: string;
   photoLimit: number;
+  /** Whether today is the event's own day -- taking or uploading a photo is only allowed then. */
+  canUpload: boolean;
+  /** The event's date, "YYYY-MM-DD", shown in the closed message when `canUpload` is false. */
+  eventDate: string;
 };
 
-export default function Camera({ eventName, photoLimit }: Props) {
+/** "YYYY-MM-DD" as e.g. "December 25, 2026", without any UTC/local shift. */
+function formatEventDate(date: string): string {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString("en-PH", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+export default function Camera({ eventName, photoLimit, canUpload, eventDate }: Props) {
   const libraryInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -479,6 +494,10 @@ export default function Camera({ eventName, photoLimit }: Props) {
     photoCount === null ? photoLimit : Math.max(photoLimit - photoCount, 0);
   const limitReached = photoCount !== null && remaining <= 0;
 
+  // Only meaningful when !canUpload: whether the event's day hasn't arrived
+  // yet, or has already passed, so the closed message below can say which.
+  const eventHasPassed = !canUpload && eventDate < todayInManila();
+
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -583,6 +602,7 @@ export default function Camera({ eventName, photoLimit }: Props) {
   // failure we fall back to calling getUserMedia directly — it proceeds
   // silently when already allowed and shows the native prompt otherwise.
   const handleTakePhoto = useCallback(async () => {
+    if (!canUpload) return;
     setError(null);
     setPermissionDenied(false);
     let state: PermissionState | "unsupported" = "unsupported";
@@ -607,7 +627,7 @@ export default function Camera({ eventName, photoLimit }: Props) {
     } else {
       setStage("prompt");
     }
-  }, [openLive]);
+  }, [canUpload, openLive]);
 
   // The <video> element only exists in the DOM once `stage` becomes "live",
   // so the stream can only be attached after that render commits.
@@ -637,14 +657,15 @@ export default function Camera({ eventName, photoLimit }: Props) {
   }, [stopStream, setTorch]);
 
   const openLibrary = useCallback(() => {
+    if (!canUpload) return;
     libraryInputRef.current?.click();
-  }, []);
+  }, [canUpload]);
 
   const handleLibraryChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const selected = e.target.files?.[0];
       e.target.value = "";
-      if (!selected) return;
+      if (!selected || !canUpload) return;
       const ext =
         (selected.name.includes(".") && selected.name.split(".").pop()) ||
         selected.type.split("/")[1] ||
@@ -654,7 +675,7 @@ export default function Camera({ eventName, photoLimit }: Props) {
       setSource("library");
       setStage("preview");
     },
-    []
+    [canUpload]
   );
 
   const captureFrame = useCallback((): Promise<PreviewItem | null> => {
@@ -1064,6 +1085,25 @@ export default function Camera({ eventName, photoLimit }: Props) {
                 className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 underline underline-offset-2"
               >
                 Delete one to free up a slot
+              </button>
+            )}
+          </div>
+        ) : !canUpload ? (
+          <div className="bg-gray-50 px-6 py-5 text-center">
+            <p className="font-medium text-foreground">
+              {eventHasPassed ? "Photo sharing has ended" : "Photo sharing isn't open yet"}
+            </p>
+            <p className="mt-1 text-sm text-gray-500">
+              {eventHasPassed
+                ? `This album was only open for new photos on the day of the event, ${formatEventDate(eventDate)}.`
+                : `You can take or add photos starting ${formatEventDate(eventDate)}.`}
+            </p>
+            {myPhotos.length > 0 && (
+              <button
+                onClick={() => setMyPhotosOpen(true)}
+                className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 underline underline-offset-2"
+              >
+                View my photos
               </button>
             )}
           </div>

@@ -8,6 +8,7 @@ import NotificationToggle from "./components/NotificationToggle";
 import GuestNameGate from "./components/GuestNameGate";
 import { getRequestEventConfig } from "@/lib/event";
 import { fetchPhotoLimit } from "@/lib/backendEvents";
+import { isTodayInManila } from "@/lib/manilaDate";
 
 export default async function Home() {
   const [config, photoLimit] = await Promise.all([getRequestEventConfig(), fetchPhotoLimit()]);
@@ -24,7 +25,8 @@ export default async function Home() {
     );
   }
 
-  const { eventName } = config;
+  const { eventName, date } = config;
+  const canUpload = isTodayInManila(date);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background px-5 pb-6 pt-5 text-foreground">
@@ -50,7 +52,7 @@ export default async function Home() {
       </div>
 
       <div className="flex shrink-0 flex-col overflow-hidden rounded-2xl">
-        <Camera eventName={eventName} photoLimit={photoLimit} />
+        <Camera eventName={eventName} photoLimit={photoLimit} canUpload={canUpload} eventDate={date} />
         <ViewGalleryButton photoLimit={photoLimit} />
       </div>
 

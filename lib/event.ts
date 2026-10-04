@@ -11,6 +11,8 @@ const SHORT_NAME_MAX_LENGTH = 20;
 export type EventInfo = {
   slug: string;
   eventName: string;
+  /** The event's date, "YYYY-MM-DD" -- guests can only take or upload photos on this day. */
+  date: string;
 };
 
 export type EventConfig = EventInfo & {
@@ -30,8 +32,12 @@ function decodeEventCookie(value: string | undefined): EventInfo | null {
   if (!value) return null;
   try {
     const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
-    if (typeof parsed?.slug === "string" && typeof parsed?.eventName === "string") {
-      return { slug: parsed.slug, eventName: parsed.eventName };
+    if (
+      typeof parsed?.slug === "string" &&
+      typeof parsed?.eventName === "string" &&
+      typeof parsed?.date === "string"
+    ) {
+      return { slug: parsed.slug, eventName: parsed.eventName, date: parsed.date };
     }
   } catch {
     // Malformed/tampered cookie — treated the same as no cookie.
