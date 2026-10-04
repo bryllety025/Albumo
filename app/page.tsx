@@ -30,21 +30,21 @@ export default async function Home() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background px-5 pb-6 pt-5 text-foreground">
-      <GuestNameGate />
       <div className="flex shrink-0 items-center justify-between">
         <Image src={logo} alt="Albumo" className="h-8 w-auto" priority />
-        <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-medium text-indigo-600">
-          {eventName}
-        </span>
+        <GuestNameGate />
       </div>
 
       <div className="flex shrink-0 flex-col items-center gap-4 pb-6 pt-8 text-center">
         <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br from-indigo-500 to-indigo-600 shadow-lg shadow-indigo-600/30">
           <CameraIcon className="text-white" size={40} strokeWidth={1.75} />
         </div>
-        <h1 className="text-2xl font-bold tracking-tight">
-          You&apos;re invited to add your photos
-        </h1>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">{eventName}</h1>
+          <p className="mt-1 text-sm font-medium text-indigo-600">
+            You&apos;re invited to add your photos
+          </p>
+        </div>
         <p className="max-w-xs text-sm text-gray-500">
           Every photo you add joins the shared event album instantly, for
           everyone to see.
