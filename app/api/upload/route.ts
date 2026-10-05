@@ -46,7 +46,16 @@ export async function POST(req: NextRequest) {
       filename,
       file.type || "image/jpeg"
     );
-    await registerUpload(config.slug, fileId, uploaderName, uploaderToken);
+    const registered = await registerUpload(config.slug, fileId, uploaderName, uploaderToken);
+    if (!registered.ok) {
+      // albumo-backend has already deleted the S3 object it would otherwise
+      // have orphaned -- this guest's upload did not go through, unlike every
+      // other registerUpload failure (which is best-effort and already in S3).
+      return NextResponse.json(
+        { error: "This event has reached its guest limit.", code: "guest_limit_reached" },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ fileId });
   } catch (err) {
     console.error(err);

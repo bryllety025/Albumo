@@ -7,11 +7,11 @@ import RecentPhotosStrip from "./components/RecentPhotosStrip";
 import NotificationToggle from "./components/NotificationToggle";
 import GuestNameGate from "./components/GuestNameGate";
 import { getRequestEventConfig } from "@/lib/event";
-import { fetchPhotoLimit } from "@/lib/backendEvents";
+import { fetchEventPhotoLimit } from "@/lib/backendEvents";
 import { isTodayInManila } from "@/lib/manilaDate";
 
 export default async function Home() {
-  const [config, photoLimit] = await Promise.all([getRequestEventConfig(), fetchPhotoLimit()]);
+  const config = await getRequestEventConfig();
 
   if (!config) {
     return (
@@ -25,8 +25,12 @@ export default async function Home() {
     );
   }
 
-  const { eventName, date } = config;
+  const { eventName, date, slug } = config;
   const canUpload = isTodayInManila(date);
+  // Per-event (its photo-limit tier's own limit, or the account-wide
+  // default) -- a fresh call every load, not part of the long-lived event
+  // cookie. See fetchEventPhotoLimit's own comment for why.
+  const photoLimit = await fetchEventPhotoLimit(slug);
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background px-5 pb-6 pt-5 text-foreground">

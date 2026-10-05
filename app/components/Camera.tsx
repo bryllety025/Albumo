@@ -372,6 +372,18 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate }: 
             method: "POST",
             body: formData,
           });
+          if (res.status === 409) {
+            // Permanently blocked for this event (its guest limit has been
+            // reached) -- never retryable, unlike every other failure below,
+            // so the job is dropped outright instead of left as a retryable
+            // "error", and the limit slot it had optimistically reserved is
+            // freed, the same as giving up on a failed upload does below.
+            queueRef.current = queueRef.current.filter((j) => j !== job);
+            syncQueue();
+            setPhotoCount(decrementStoredCount());
+            showToast("This event has reached its guest limit. New photos can't be added from this device.");
+            continue;
+          }
           if (!res.ok) throw new Error(await res.text());
           const data = (await res.json()) as { fileId: string };
           queueRef.current = queueRef.current.filter((j) => j !== job);

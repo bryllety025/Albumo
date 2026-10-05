@@ -30,18 +30,23 @@ export async function verifyEventSlug(slug: string): Promise<VerifiedEvent | nul
   }
 }
 
-// The admin-configured max photos/videos a single device may upload per
-// event (see albumo-backend's settings table). Falls back to this default —
-// never throws — so an admin's backend being unreachable degrades to the old
-// fixed behaviour instead of breaking the camera.
+// The max photos/videos a single device may upload to this event: either the
+// event's own photo-limit tier's limit, or (no such tier -- the usual case
+// before tiers existed, or while the account has none) the account-wide
+// default. Falls back to this constant -- never throws -- so albumo-backend
+// being unreachable degrades to the old fixed behaviour instead of breaking
+// the camera.
 const FALLBACK_PHOTO_LIMIT = 20;
 
-export async function fetchPhotoLimit(): Promise<number> {
+// Deliberately a fresh call per page load (re-read at most once a minute),
+// not baked into the `albumo_event` cookie alongside slug/eventName/date:
+// that cookie is set once, at proxy-time, and kept for up to a year, so a
+// value this likely to change (an admin edits the tier, or the event's tier
+// itself) would go stale for the cookie's whole lifetime if stored there.
+export async function fetchEventPhotoLimit(slug: string): Promise<number> {
   try {
-    const res = await fetch(`${EVENTS_API_URL}/settings/guest-app`, {
+    const res = await fetch(`${EVENTS_API_URL}/events/public/${encodeURIComponent(slug)}`, {
       headers: { "x-api-key": process.env.EVENTS_API_KEY ?? "" },
-      // Re-read at most once a minute: an admin's change should show up
-      // without a deploy, but every page load doesn't need its own request.
       next: { revalidate: 60 },
     });
     if (!res.ok) return FALLBACK_PHOTO_LIMIT;
@@ -56,17 +61,24 @@ export async function fetchPhotoLimit(): Promise<number> {
   }
 }
 
+export type RegisterUploadResult = { ok: true } | { ok: false; reason: "guest_limit_reached" };
+
 // Tells albumo-backend who uploaded a file, so the event owner can see it in
 // their dashboard, and records this device's uploaderToken against it so it
 // can later prove ownership to delete it (see deleteGuestUpload below).
-// Best-effort and never throws -- the photo is already saved to S3 by the
-// time this runs, so a failure here shouldn't undo the upload.
+// Best-effort for every failure except one: a 409 means the event has a
+// guest-limit tier and this is a brand-new device arriving after it was
+// already reached, which albumo-backend has already undone (it deletes the S3 object
+// it would otherwise orphan) -- that specific case must reach the caller so
+// the guest can be told, rather than being silently swallowed like a
+// transient network blip would be (where undoing an upload that's already in
+// S3 would be the wrong call).
 export async function registerUpload(
   slug: string,
   name: string,
   uploaderName?: string,
   uploaderToken?: string
-): Promise<void> {
+): Promise<RegisterUploadResult> {
   try {
     const res = await fetch(`${EVENTS_API_URL}/events/public/${encodeURIComponent(slug)}/media`, {
       method: "POST",
@@ -81,11 +93,16 @@ export async function registerUpload(
       }),
       cache: "no-store",
     });
+    if (res.status === 409) {
+      return { ok: false, reason: "guest_limit_reached" };
+    }
     if (!res.ok) {
       console.error(`Failed to register uploader name with albumo-backend: ${res.status}`);
     }
+    return { ok: true };
   } catch (err) {
     console.error("Failed to register uploader name with albumo-backend:", err);
+    return { ok: true };
   }
 }
 
