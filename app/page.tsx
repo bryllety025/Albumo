@@ -7,7 +7,7 @@ import RecentPhotosStrip from "./components/RecentPhotosStrip";
 import NotificationToggle from "./components/NotificationToggle";
 import GuestNameGate from "./components/GuestNameGate";
 import { getRequestEventConfig } from "@/lib/event";
-import { fetchEventPhotoLimit } from "@/lib/backendEvents";
+import { fetchEventPhotoLimit, fetchEventUploadsMode } from "@/lib/backendEvents";
 import { isTodayInManila } from "@/lib/manilaDate";
 
 export default async function Home() {
@@ -26,11 +26,16 @@ export default async function Home() {
   }
 
   const { eventName, date, slug } = config;
-  const canUpload = isTodayInManila(date);
   // Per-event (its photo-limit tier's own limit, or the account-wide
-  // default) -- a fresh call every load, not part of the long-lived event
-  // cookie. See fetchEventPhotoLimit's own comment for why.
-  const photoLimit = await fetchEventPhotoLimit(slug);
+  // default, and an admin's own upload-policy choice) -- fresh calls every
+  // load, not part of the long-lived event cookie. See fetchEventPhotoLimit's
+  // own comment for why.
+  const [photoLimit, uploadsMode] = await Promise.all([fetchEventPhotoLimit(slug), fetchEventUploadsMode(slug)]);
+  // `disabled`/`always_open` are an admin override in either direction;
+  // `automatic` (the default) falls back to the original design -- guests
+  // may only upload on the event's own day.
+  const canUpload = uploadsMode === "disabled" ? false : uploadsMode === "always_open" ? true : isTodayInManila(date);
+  const uploadsPaused = uploadsMode === "disabled";
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-background px-5 pb-6 pt-5 text-foreground">
@@ -56,7 +61,13 @@ export default async function Home() {
       </div>
 
       <div className="flex shrink-0 flex-col overflow-hidden rounded-2xl">
-        <Camera eventName={eventName} photoLimit={photoLimit} canUpload={canUpload} eventDate={date} />
+        <Camera
+          eventName={eventName}
+          photoLimit={photoLimit}
+          canUpload={canUpload}
+          eventDate={date}
+          uploadsPaused={uploadsPaused}
+        />
         <ViewGalleryButton photoLimit={photoLimit} />
       </div>
 

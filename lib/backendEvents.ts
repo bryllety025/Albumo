@@ -61,7 +61,40 @@ export async function fetchEventPhotoLimit(slug: string): Promise<number> {
   }
 }
 
-export type RegisterUploadResult = { ok: true } | { ok: false; reason: "guest_limit_reached" };
+/**
+ * An admin's upload policy for an event. `automatic` (the default) restricts
+ * uploads to the event's own day; `disabled` blocks them outright no matter
+ * the date; `always_open` allows them no matter the date.
+ */
+export type UploadsMode = "automatic" | "disabled" | "always_open";
+
+// Not cookie-baked (same reasoning as fetchEventPhotoLimit above) and,
+// unlike that one, not even revalidate-cached -- an admin's pause/resume
+// decision needs to show up the moment a guest next opens the app, not up to
+// a minute late, so this is a fully live `no-store` read on every open. Fails
+// open to "automatic" (the original design) so albumo-backend being
+// unreachable degrades to the date-based cutoff rather than either locking
+// every guest out or throwing the gate open over a network blip.
+export async function fetchEventUploadsMode(slug: string): Promise<UploadsMode> {
+  try {
+    const res = await fetch(`${EVENTS_API_URL}/events/public/${encodeURIComponent(slug)}`, {
+      headers: { "x-api-key": process.env.EVENTS_API_KEY ?? "" },
+      cache: "no-store",
+    });
+    if (!res.ok) return "automatic";
+
+    const data = (await res.json()) as { uploadsMode?: UploadsMode };
+    return data.uploadsMode === "disabled" || data.uploadsMode === "always_open" ? data.uploadsMode : "automatic";
+  } catch (err) {
+    console.error("Failed to read the uploads mode from albumo-backend:", err);
+    return "automatic";
+  }
+}
+
+export type RegisterUploadResult =
+  | { ok: true }
+  | { ok: false; reason: "guest_limit_reached" }
+  | { ok: false; reason: "uploads_disabled" };
 
 // Tells albumo-backend who uploaded a file, so the event owner can see it in
 // their dashboard, and records this device's uploaderToken against it so it
@@ -95,6 +128,9 @@ export async function registerUpload(
     });
     if (res.status === 409) {
       return { ok: false, reason: "guest_limit_reached" };
+    }
+    if (res.status === 403) {
+      return { ok: false, reason: "uploads_disabled" };
     }
     if (!res.ok) {
       console.error(`Failed to register uploader name with albumo-backend: ${res.status}`);

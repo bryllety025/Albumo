@@ -267,10 +267,12 @@ function buildFilename(ext: string) {
 type Props = {
   eventName: string;
   photoLimit: number;
-  /** Whether today is the event's own day -- taking or uploading a photo is only allowed then. */
+  /** Whether today is the event's own day AND an admin hasn't paused uploads -- both must hold to take or upload a photo. */
   canUpload: boolean;
   /** The event's date, "YYYY-MM-DD", shown in the closed message when `canUpload` is false. */
   eventDate: string;
+  /** Whether an admin has manually paused uploads for this event, independent of the date. Takes priority over the date-based closed message when true. */
+  uploadsPaused: boolean;
 };
 
 /** "YYYY-MM-DD" as e.g. "December 25, 2026", without any UTC/local shift. */
@@ -283,7 +285,7 @@ function formatEventDate(date: string): string {
   });
 }
 
-export default function Camera({ eventName, photoLimit, canUpload, eventDate }: Props) {
+export default function Camera({ eventName, photoLimit, canUpload, eventDate, uploadsPaused }: Props) {
   const libraryInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -372,16 +374,21 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate }: 
             method: "POST",
             body: formData,
           });
-          if (res.status === 409) {
+          if (res.status === 409 || res.status === 403) {
             // Permanently blocked for this event (its guest limit has been
-            // reached) -- never retryable, unlike every other failure below,
-            // so the job is dropped outright instead of left as a retryable
-            // "error", and the limit slot it had optimistically reserved is
-            // freed, the same as giving up on a failed upload does below.
+            // reached, or an admin has paused uploads) -- never retryable,
+            // unlike every other failure below, so the job is dropped
+            // outright instead of left as a retryable "error", and the limit
+            // slot it had optimistically reserved is freed, the same as
+            // giving up on a failed upload does below.
             queueRef.current = queueRef.current.filter((j) => j !== job);
             syncQueue();
             setPhotoCount(decrementStoredCount());
-            showToast("This event has reached its guest limit. New photos can't be added from this device.");
+            showToast(
+              res.status === 403
+                ? "Uploads are currently paused for this event. New photos can't be added right now."
+                : "This event has reached its guest limit. New photos can't be added from this device.",
+            );
             continue;
           }
           if (!res.ok) throw new Error(await res.text());
@@ -1103,12 +1110,18 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate }: 
         ) : !canUpload ? (
           <div className="bg-gray-50 px-6 py-5 text-center">
             <p className="font-medium text-foreground">
-              {eventHasPassed ? "Photo sharing has ended" : "Photo sharing isn't open yet"}
+              {uploadsPaused
+                ? "Photo sharing is paused"
+                : eventHasPassed
+                  ? "Photo sharing has ended"
+                  : "Photo sharing isn't open yet"}
             </p>
             <p className="mt-1 text-sm text-gray-500">
-              {eventHasPassed
-                ? `This album was only open for new photos on the day of the event, ${formatEventDate(eventDate)}.`
-                : `You can take or add photos starting ${formatEventDate(eventDate)}.`}
+              {uploadsPaused
+                ? "The event host has paused new photos for now. Please check back later."
+                : eventHasPassed
+                  ? `This album was only open for new photos on the day of the event, ${formatEventDate(eventDate)}.`
+                  : `You can take or add photos starting ${formatEventDate(eventDate)}.`}
             </p>
             {myPhotos.length > 0 && (
               <button
