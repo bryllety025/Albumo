@@ -691,15 +691,17 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
 
   const handleLibraryChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const selected = e.target.files?.[0];
+      const selected = Array.from(e.target.files ?? []);
       e.target.value = "";
-      if (!selected || !canUpload) return;
-      const ext =
-        (selected.name.includes(".") && selected.name.split(".").pop()) ||
-        selected.type.split("/")[1] ||
-        "jpg";
-      const url = URL.createObjectURL(selected);
-      setPreviewItems([{ url, blob: selected, ext, selected: true }]);
+      if (selected.length === 0 || !canUpload) return;
+      const items: PreviewItem[] = selected.map((file) => {
+        const ext =
+          (file.name.includes(".") && file.name.split(".").pop()) ||
+          file.type.split("/")[1] ||
+          "jpg";
+        return { url: URL.createObjectURL(file), blob: file, ext, selected: true };
+      });
+      setPreviewItems(items);
       setSource("library");
       setStage("preview");
     },
@@ -1096,6 +1098,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
         ref={libraryInputRef}
         type="file"
         accept="image/*"
+        multiple
         onChange={handleLibraryChange}
         className="sr-only"
       />
