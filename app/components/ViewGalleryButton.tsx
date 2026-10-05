@@ -21,7 +21,7 @@ type Slots = {
   front: 0 | 1;
 };
 
-export default function ViewGalleryButton({ photoLimit }: { photoLimit: number }) {
+export default function ViewGalleryButton({ photoLimit }: { photoLimit: number | null }) {
   const files = usePhotos();
   const count = files ? files.length : null;
 
@@ -123,7 +123,9 @@ export default function ViewGalleryButton({ photoLimit }: { photoLimit: number }
           </span>
           {yourCount !== null && (
             <span className="block text-xs text-white/60">
-              You&apos;ve uploaded {Math.min(yourCount, photoLimit)} of {photoLimit}
+              {photoLimit === null
+                ? `You've uploaded ${yourCount}`
+                : `You've uploaded ${Math.min(yourCount, photoLimit)} of ${photoLimit}`}
             </span>
           )}
         </span>

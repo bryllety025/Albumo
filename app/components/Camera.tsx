@@ -266,7 +266,8 @@ function buildFilename(ext: string) {
 
 type Props = {
   eventName: string;
-  photoLimit: number;
+  /** Null means this event has no photo limit. */
+  photoLimit: number | null;
   /** Whether today is the event's own day AND an admin hasn't paused uploads -- both must hold to take or upload a photo. */
   canUpload: boolean;
   /** The event's date, "YYYY-MM-DD", shown in the closed message when `canUpload` is false. */
@@ -286,6 +287,14 @@ function formatEventDate(date: string): string {
 }
 
 export default function Camera({ eventName, photoLimit, canUpload, eventDate, uploadsPaused }: Props) {
+  // Internal math treats "no limit" as Infinity throughout this component --
+  // safe for all the arithmetic/array-length logic below (unlike `null`,
+  // which would silently break it, e.g. Array.prototype.slice(0, null)
+  // acting as 0, not "no cap"). Never itself rendered as text: the one spot
+  // that would ("You've shared N photos") only shows once the limit is
+  // reached, which never happens when this is Infinity.
+  const effectivePhotoLimit = photoLimit ?? Infinity;
+
   const libraryInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -455,7 +464,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
         setMyPhotos(removeMyPhoto(photo.id));
         const next = decrementStoredCount();
         setPhotoCount(next);
-        updatePhotoCountNotification(Math.max(photoLimit - next, 0), eventName);
+        updatePhotoCountNotification(photoLimit === null ? null : Math.max(photoLimit - next, 0), eventName);
         return true;
       } catch {
         showToast("Couldn't delete that photo. Check your connection and try again.");
@@ -510,7 +519,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
   );
 
   const remaining =
-    photoCount === null ? photoLimit : Math.max(photoLimit - photoCount, 0);
+    photoCount === null ? effectivePhotoLimit : Math.max(effectivePhotoLimit - photoCount, 0);
   const limitReached = photoCount !== null && remaining <= 0;
 
   // Only meaningful when !canUpload: whether the event's day hasn't arrived
@@ -977,7 +986,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
     setIsSaving(true);
 
     const currentRemaining =
-      photoCount === null ? photoLimit : Math.max(photoLimit - photoCount, 0);
+      photoCount === null ? effectivePhotoLimit : Math.max(effectivePhotoLimit - photoCount, 0);
     const capped = toSave.slice(0, currentRemaining);
     const skippedForLimit = toSave.length - capped.length;
 
@@ -999,7 +1008,10 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
 
     setPhotoCount(runningCount);
     if (runningCount !== startingCount) {
-      updatePhotoCountNotification(Math.max(photoLimit - runningCount, 0), eventName);
+      updatePhotoCountNotification(
+        photoLimit === null ? null : Math.max(photoLimit - runningCount, 0),
+        eventName
+      );
     }
 
     const messages: string[] = [];
@@ -1022,7 +1034,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
 
     if (anySucceeded || allSkippedForLimit) {
       resetPreview();
-      if (source === "camera" && runningCount < photoLimit) {
+      if (source === "camera" && runningCount < effectivePhotoLimit) {
         openLive();
       } else {
         setStage("idle");
@@ -1034,6 +1046,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
     photoCount,
     eventName,
     photoLimit,
+    effectivePhotoLimit,
     source,
     enqueueUpload,
     showToast,
@@ -1092,7 +1105,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
         (limitReached ? (
           <div className="bg-gray-50 px-6 py-5 text-center">
             <p className="font-medium text-foreground">
-              You&apos;ve shared {photoLimit} photos — thank you!
+              You&apos;ve shared {effectivePhotoLimit} photos — thank you!
             </p>
             <p className="mt-1 text-sm text-gray-500">
               That&apos;s the limit per device for tonight. Ask a friend to

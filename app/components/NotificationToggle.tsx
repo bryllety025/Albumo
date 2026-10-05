@@ -13,7 +13,8 @@ type Status = "unsupported" | "ios-not-installed" | "idle" | "granted" | "denied
 
 type Props = {
   eventName: string;
-  photoLimit: number;
+  /** Null means the event has no photo limit. */
+  photoLimit: number | null;
 };
 
 export default function NotificationToggle({ eventName, photoLimit }: Props) {
@@ -42,7 +43,7 @@ export default function NotificationToggle({ eventName, photoLimit }: Props) {
       const granted = await requestNotificationPermission();
       if (granted) {
         setStatus("granted");
-        const remaining = Math.max(photoLimit - getStoredCount(), 0);
+        const remaining = photoLimit === null ? null : Math.max(photoLimit - getStoredCount(), 0);
         updatePhotoCountNotification(remaining, eventName);
       } else {
         setStatus("denied");

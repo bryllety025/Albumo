@@ -43,7 +43,12 @@ const FALLBACK_PHOTO_LIMIT = 20;
 // that cookie is set once, at proxy-time, and kept for up to a year, so a
 // value this likely to change (an admin edits the tier, or the event's tier
 // itself) would go stale for the cookie's whole lifetime if stored there.
-export async function fetchEventPhotoLimit(slug: string): Promise<number> {
+//
+// Returns null for "unlimited" (the tier, or the account-wide default, has
+// no cap) -- a deliberate, meaningful value, unlike the FALLBACK_PHOTO_LIMIT
+// degrade below, which only ever means "couldn't tell, assume the old fixed
+// default" (an unreachable backend or a malformed response).
+export async function fetchEventPhotoLimit(slug: string): Promise<number | null> {
   try {
     const res = await fetch(`${EVENTS_API_URL}/events/public/${encodeURIComponent(slug)}`, {
       headers: { "x-api-key": process.env.EVENTS_API_KEY ?? "" },
@@ -51,7 +56,8 @@ export async function fetchEventPhotoLimit(slug: string): Promise<number> {
     });
     if (!res.ok) return FALLBACK_PHOTO_LIMIT;
 
-    const data = (await res.json()) as { photoLimitPerDevice: number };
+    const data = (await res.json()) as { photoLimitPerDevice: number | null };
+    if (data.photoLimitPerDevice === null) return null;
     return Number.isInteger(data.photoLimitPerDevice) && data.photoLimitPerDevice > 0
       ? data.photoLimitPerDevice
       : FALLBACK_PHOTO_LIMIT;

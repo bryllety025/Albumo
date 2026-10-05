@@ -18,9 +18,11 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 export async function updatePhotoCountNotification(
-  remaining: number,
+  /** Null means the event has no photo limit -- there's nothing meaningful to report, so this is a no-op. */
+  remaining: number | null,
   eventName: string
 ): Promise<void> {
+  if (remaining === null) return;
   if (!("serviceWorker" in navigator) || Notification.permission !== "granted") return;
   try {
     const registration = await navigator.serviceWorker.ready;
