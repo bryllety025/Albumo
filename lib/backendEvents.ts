@@ -97,6 +97,29 @@ export async function fetchEventUploadsMode(slug: string): Promise<UploadsMode> 
   }
 }
 
+// Not per-event (unlike the fetches above): this is an account-wide setting,
+// so it's always the same call regardless of which event's link the guest
+// opened. `no-store` since an admin should be able to add/remove the link
+// and have it show up on the next page load, not wait on a cache. Returns
+// null (never throws) both when the backend is unreachable and when no
+// admin has set a link yet -- callers treat the two the same way: don't show
+// the prompt.
+export async function fetchGuestAppFacebookUrl(): Promise<string | null> {
+  try {
+    const res = await fetch(`${EVENTS_API_URL}/settings/guest-app`, {
+      headers: { "x-api-key": process.env.EVENTS_API_KEY ?? "" },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as { facebookUrl?: string };
+    return data.facebookUrl || null;
+  } catch (err) {
+    console.error("Failed to read the Facebook link from albumo-backend:", err);
+    return null;
+  }
+}
+
 export type RegisterUploadResult =
   | { ok: true }
   | { ok: false; reason: "guest_limit_reached" }

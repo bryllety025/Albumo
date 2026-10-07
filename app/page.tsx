@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { Camera as CameraIcon } from "lucide-react";
+import { Camera as CameraIcon, ThumbsUp } from "lucide-react";
 import logo from "@/assets/img/logo.png";
 import Camera from "./components/Camera";
 import ViewGalleryButton from "./components/ViewGalleryButton";
@@ -7,7 +7,7 @@ import RecentPhotosStrip from "./components/RecentPhotosStrip";
 import NotificationToggle from "./components/NotificationToggle";
 import GuestNameGate from "./components/GuestNameGate";
 import { getRequestEventConfig } from "@/lib/event";
-import { fetchEventPhotoLimit, fetchEventUploadsMode } from "@/lib/backendEvents";
+import { fetchEventPhotoLimit, fetchEventUploadsMode, fetchGuestAppFacebookUrl } from "@/lib/backendEvents";
 import { isTodayInManila } from "@/lib/manilaDate";
 
 export default async function Home() {
@@ -30,7 +30,11 @@ export default async function Home() {
   // default, and an admin's own upload-policy choice) -- fresh calls every
   // load, not part of the long-lived event cookie. See fetchEventPhotoLimit's
   // own comment for why.
-  const [photoLimit, uploadsMode] = await Promise.all([fetchEventPhotoLimit(slug), fetchEventUploadsMode(slug)]);
+  const [photoLimit, uploadsMode, facebookUrl] = await Promise.all([
+    fetchEventPhotoLimit(slug),
+    fetchEventUploadsMode(slug),
+    fetchGuestAppFacebookUrl(),
+  ]);
   // `disabled`/`always_open` are an admin override in either direction;
   // `automatic` (the default) falls back to the original design -- guests
   // may only upload on the event's own day.
@@ -74,6 +78,18 @@ export default async function Home() {
       <RecentPhotosStrip />
 
       <NotificationToggle eventName={eventName} photoLimit={photoLimit} />
+
+      {facebookUrl && (
+        <a
+          href={facebookUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 flex shrink-0 items-center justify-center gap-1.5 text-center text-xs font-medium text-gray-500"
+        >
+          <ThumbsUp size={13} strokeWidth={1.75} />
+          Follow us on Facebook
+        </a>
+      )}
     </div>
   );
 }
