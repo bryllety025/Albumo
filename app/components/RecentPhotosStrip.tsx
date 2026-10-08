@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Share2, X } from "lucide-react";
 import { usePhotos } from "@/lib/usePhotos";
+import { generateStoryCard, shareOrDownloadCard } from "@/lib/shareCard";
 
 const RECENT_COUNT = 10;
 
 export default function RecentPhotosStrip() {
   const files = usePhotos();
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [sharingPhotoId, setSharingPhotoId] = useState<string | null>(null);
 
   const recent = files ? files.slice(0, RECENT_COUNT) : [];
 
@@ -23,6 +25,20 @@ export default function RecentPhotosStrip() {
       i === null ? null : i === recent.length - 1 ? 0 : i + 1
     );
   }, [recent.length]);
+
+  const handleShare = useCallback(async (id: string, name: string) => {
+    if (sharingPhotoId) return;
+    setSharingPhotoId(id);
+    try {
+      const blob = await generateStoryCard(`/api/photos/${id}/thumbnail`);
+      const baseName = name.replace(/\.[^./]+$/, "");
+      await shareOrDownloadCard(blob, `albumo-${baseName}.png`);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSharingPhotoId(null);
+    }
+  }, [sharingPhotoId]);
 
   if (!files || files.length === 0) return null;
 
@@ -89,13 +105,28 @@ export default function RecentPhotosStrip() {
               </>
             )}
 
-            <button
-              onClick={closePreview}
-              aria-label="Close preview"
-              className="absolute right-2 top-2 rounded-full bg-white/20 p-2 hover:bg-white/30"
-            >
-              <X size={20} className="text-white" strokeWidth={1.75} />
-            </button>
+            <div className="absolute right-2 top-2 flex items-center gap-2">
+              <button
+                onClick={() => handleShare(previewPhoto.id, previewPhoto.name)}
+                disabled={sharingPhotoId === previewPhoto.id}
+                aria-label="Share photo"
+                className="rounded-full bg-white/20 p-2 hover:bg-white/30 disabled:opacity-50"
+              >
+                {sharingPhotoId === previewPhoto.id ? (
+                  <Loader2 size={20} className="animate-spin text-white" strokeWidth={1.75} />
+                ) : (
+                  <Share2 size={20} className="text-white" strokeWidth={1.75} />
+                )}
+              </button>
+
+              <button
+                onClick={closePreview}
+                aria-label="Close preview"
+                className="rounded-full bg-white/20 p-2 hover:bg-white/30"
+              >
+                <X size={20} className="text-white" strokeWidth={1.75} />
+              </button>
+            </div>
           </div>
         </div>
       )}

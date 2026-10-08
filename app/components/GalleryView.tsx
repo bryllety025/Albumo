@@ -10,9 +10,12 @@ import {
   Download,
   LayoutGrid,
   List,
+  Loader2,
+  Share2,
   X,
 } from "lucide-react";
 import type { PhotoFile } from "@/lib/s3";
+import { generateStoryCard, shareOrDownloadCard } from "@/lib/shareCard";
 import PhotoGrid from "./gallery/PhotoGrid";
 import PhotoList from "./gallery/PhotoList";
 
@@ -39,6 +42,7 @@ export default function GalleryView() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [downloadingSelection, setDownloadingSelection] = useState(false);
+  const [sharingPhotoId, setSharingPhotoId] = useState<string | null>(null);
 
   const loadPhotos = useCallback(async () => {
     setStatus("loading");
@@ -81,6 +85,20 @@ export default function GalleryView() {
   const handleSingleDownload = useCallback((id: string, name: string) => {
     triggerDownload(id, name);
   }, []);
+
+  const handleShare = useCallback(async (photo: PhotoFile) => {
+    if (sharingPhotoId) return;
+    setSharingPhotoId(photo.id);
+    try {
+      const blob = await generateStoryCard(`/api/photos/${photo.id}/thumbnail`);
+      const baseName = photo.name.replace(/\.[^./]+$/, "");
+      await shareOrDownloadCard(blob, `albumo-${baseName}.png`);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSharingPhotoId(null);
+    }
+  }, [sharingPhotoId]);
 
   const handleDownloadSelected = useCallback(() => {
     if (selectedIds.size === 0 || downloadingSelection) return;
@@ -246,21 +264,36 @@ export default function GalleryView() {
               <ChevronRight size={24} className="text-white" strokeWidth={1.75} />
             </button>
 
-            <button
-              onClick={() => handleSingleDownload(previewPhoto.id, previewPhoto.name)}
-              aria-label="Download photo"
-              className="absolute right-14 top-2 rounded-full bg-white/20 p-2 hover:bg-white/30"
-            >
-              <Download size={20} className="text-white" strokeWidth={1.75} />
-            </button>
+            <div className="absolute right-2 top-2 flex items-center gap-2">
+              <button
+                onClick={() => handleShare(previewPhoto)}
+                disabled={sharingPhotoId === previewPhoto.id}
+                aria-label="Share photo"
+                className="rounded-full bg-white/20 p-2 hover:bg-white/30 disabled:opacity-50"
+              >
+                {sharingPhotoId === previewPhoto.id ? (
+                  <Loader2 size={20} className="animate-spin text-white" strokeWidth={1.75} />
+                ) : (
+                  <Share2 size={20} className="text-white" strokeWidth={1.75} />
+                )}
+              </button>
 
-            <button
-              onClick={closePreview}
-              aria-label="Close preview"
-              className="absolute right-2 top-2 rounded-full bg-white/20 p-2 hover:bg-white/30"
-            >
-              <X size={20} className="text-white" strokeWidth={1.75} />
-            </button>
+              <button
+                onClick={() => handleSingleDownload(previewPhoto.id, previewPhoto.name)}
+                aria-label="Download photo"
+                className="rounded-full bg-white/20 p-2 hover:bg-white/30"
+              >
+                <Download size={20} className="text-white" strokeWidth={1.75} />
+              </button>
+
+              <button
+                onClick={closePreview}
+                aria-label="Close preview"
+                className="rounded-full bg-white/20 p-2 hover:bg-white/30"
+              >
+                <X size={20} className="text-white" strokeWidth={1.75} />
+              </button>
+            </div>
           </div>
         </div>
       )}
