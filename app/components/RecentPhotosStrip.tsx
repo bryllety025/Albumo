@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { ChevronLeft, ChevronRight, Loader2, Share2, X } from "lucide-react";
 import { usePhotos } from "@/lib/usePhotos";
 import { generateStoryCard, shareOrDownloadCard } from "@/lib/shareCard";
+import { TooltipLabel } from "./tooltip-label";
 
 const RECENT_COUNT = 10;
 
@@ -90,17 +91,19 @@ export default function RecentPhotosStrip() {
                 <button
                   onClick={previewPrev}
                   aria-label="Previous photo"
-                  className="absolute left-2 rounded-full bg-white/20 p-2 hover:bg-white/30 sm:left-4"
+                  className="group/tooltip absolute left-2 rounded-full bg-white/20 p-2 hover:bg-white/30 sm:left-4"
                 >
                   <ChevronLeft size={24} className="text-white" strokeWidth={1.75} />
+                  <TooltipLabel>Previous</TooltipLabel>
                 </button>
 
                 <button
                   onClick={previewNext}
                   aria-label="Next photo"
-                  className="absolute right-2 rounded-full bg-white/20 p-2 hover:bg-white/30 sm:right-4"
+                  className="group/tooltip absolute right-2 rounded-full bg-white/20 p-2 hover:bg-white/30 sm:right-4"
                 >
                   <ChevronRight size={24} className="text-white" strokeWidth={1.75} />
+                  <TooltipLabel>Next</TooltipLabel>
                 </button>
               </>
             )}
@@ -110,21 +113,23 @@ export default function RecentPhotosStrip() {
                 onClick={() => handleShare(previewPhoto.id, previewPhoto.name)}
                 disabled={sharingPhotoId === previewPhoto.id}
                 aria-label="Share photo"
-                className="rounded-full bg-white/20 p-2 hover:bg-white/30 disabled:opacity-50"
+                className="group/tooltip relative rounded-full bg-white/20 p-2 hover:bg-white/30 disabled:opacity-50"
               >
                 {sharingPhotoId === previewPhoto.id ? (
                   <Loader2 size={20} className="animate-spin text-white" strokeWidth={1.75} />
                 ) : (
                   <Share2 size={20} className="text-white" strokeWidth={1.75} />
                 )}
+                <TooltipLabel>Share</TooltipLabel>
               </button>
 
               <button
                 onClick={closePreview}
                 aria-label="Close preview"
-                className="rounded-full bg-white/20 p-2 hover:bg-white/30"
+                className="group/tooltip relative rounded-full bg-white/20 p-2 hover:bg-white/30"
               >
                 <X size={20} className="text-white" strokeWidth={1.75} />
+                <TooltipLabel>Close</TooltipLabel>
               </button>
             </div>
           </div>

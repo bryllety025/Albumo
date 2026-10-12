@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { PhotoFile } from "@/lib/s3";
 import { generateStoryCard, shareOrDownloadCard } from "@/lib/shareCard";
+import { TooltipLabel } from "./tooltip-label";
 import PhotoGrid from "./gallery/PhotoGrid";
 import PhotoList from "./gallery/PhotoList";
 
@@ -145,20 +146,22 @@ export default function GalleryView() {
             <button
               onClick={() => setLayout("grid")}
               aria-label="Grid layout"
-              className={`rounded-full p-1.5 ${
+              className={`group/tooltip relative rounded-full p-1.5 ${
                 layout === "grid" ? "bg-indigo-600 text-ivory" : "text-foreground"
               }`}
             >
               <LayoutGrid size={16} strokeWidth={1.75} />
+              <TooltipLabel>Grid</TooltipLabel>
             </button>
             <button
               onClick={() => setLayout("list")}
               aria-label="List layout"
-              className={`rounded-full p-1.5 ${
+              className={`group/tooltip relative rounded-full p-1.5 ${
                 layout === "list" ? "bg-indigo-600 text-ivory" : "text-foreground"
               }`}
             >
               <List size={16} strokeWidth={1.75} />
+              <TooltipLabel>List</TooltipLabel>
             </button>
           </div>
         </div>
@@ -251,17 +254,19 @@ export default function GalleryView() {
             <button
               onClick={previewPrev}
               aria-label="Previous photo"
-              className="absolute left-2 rounded-full bg-white/20 p-2 hover:bg-white/30 sm:left-4"
+              className="group/tooltip absolute left-2 rounded-full bg-white/20 p-2 hover:bg-white/30 sm:left-4"
             >
               <ChevronLeft size={24} className="text-white" strokeWidth={1.75} />
+              <TooltipLabel>Previous</TooltipLabel>
             </button>
 
             <button
               onClick={previewNext}
               aria-label="Next photo"
-              className="absolute right-2 rounded-full bg-white/20 p-2 hover:bg-white/30 sm:right-4"
+              className="group/tooltip absolute right-2 rounded-full bg-white/20 p-2 hover:bg-white/30 sm:right-4"
             >
               <ChevronRight size={24} className="text-white" strokeWidth={1.75} />
+              <TooltipLabel>Next</TooltipLabel>
             </button>
 
             <div className="absolute right-2 top-2 flex items-center gap-2">
@@ -269,29 +274,32 @@ export default function GalleryView() {
                 onClick={() => handleShare(previewPhoto)}
                 disabled={sharingPhotoId === previewPhoto.id}
                 aria-label="Share photo"
-                className="rounded-full bg-white/20 p-2 hover:bg-white/30 disabled:opacity-50"
+                className="group/tooltip relative rounded-full bg-white/20 p-2 hover:bg-white/30 disabled:opacity-50"
               >
                 {sharingPhotoId === previewPhoto.id ? (
                   <Loader2 size={20} className="animate-spin text-white" strokeWidth={1.75} />
                 ) : (
                   <Share2 size={20} className="text-white" strokeWidth={1.75} />
                 )}
+                <TooltipLabel>Share</TooltipLabel>
               </button>
 
               <button
                 onClick={() => handleSingleDownload(previewPhoto.id, previewPhoto.name)}
                 aria-label="Download photo"
-                className="rounded-full bg-white/20 p-2 hover:bg-white/30"
+                className="group/tooltip relative rounded-full bg-white/20 p-2 hover:bg-white/30"
               >
                 <Download size={20} className="text-white" strokeWidth={1.75} />
+                <TooltipLabel>Download</TooltipLabel>
               </button>
 
               <button
                 onClick={closePreview}
                 aria-label="Close preview"
-                className="rounded-full bg-white/20 p-2 hover:bg-white/30"
+                className="group/tooltip relative rounded-full bg-white/20 p-2 hover:bg-white/30"
               >
                 <X size={20} className="text-white" strokeWidth={1.75} />
+                <TooltipLabel>Close</TooltipLabel>
               </button>
             </div>
           </div>

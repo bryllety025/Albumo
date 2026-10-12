@@ -34,6 +34,7 @@ import { getStoredGuestName } from "@/lib/guestName";
 import { updatePhotoCountNotification } from "@/lib/notifications";
 import { getOrCreateUploaderToken } from "@/lib/uploaderToken";
 import { todayInManila } from "@/lib/manilaDate";
+import { TooltipLabel } from "./tooltip-label";
 
 // Filters are stored as structured ops rather than CSS strings so the live
 // preview (CSS on the <video>) and the captured photo (a colour matrix applied
@@ -1277,15 +1278,16 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
               onClick={switchCamera}
               aria-label="Switch camera"
               disabled={isCapturing || countdownValue !== null}
-              className="h-10 w-10 rounded-full bg-camera-bg/60 text-ivory backdrop-blur flex items-center justify-center transition-colors hover:bg-camera-bg/80 disabled:opacity-50"
+              className="group/tooltip relative h-10 w-10 rounded-full bg-camera-bg/60 text-ivory backdrop-blur flex items-center justify-center transition-colors hover:bg-camera-bg/80 disabled:opacity-50"
             >
               <SwitchCamera size={18} strokeWidth={1.75} />
+              <TooltipLabel>Switch camera</TooltipLabel>
             </button>
             <button
               onClick={() => setFlashOn((v) => !v)}
               aria-label="Toggle flash"
               disabled={isCapturing || countdownValue !== null}
-              className={`h-10 w-10 rounded-full backdrop-blur flex items-center justify-center transition-colors disabled:opacity-50 ${
+              className={`group/tooltip relative h-10 w-10 rounded-full backdrop-blur flex items-center justify-center transition-colors disabled:opacity-50 ${
                 flashOn ? "bg-indigo-600 text-ivory" : "bg-camera-bg/60 text-ivory hover:bg-camera-bg/80"
               }`}
             >
@@ -1294,6 +1296,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
               ) : (
                 <ZapOff size={18} strokeWidth={1.75} />
               )}
+              <TooltipLabel>Toggle flash</TooltipLabel>
             </button>
             <button
               onClick={() => setHdrOn((v) => !v)}
@@ -1309,11 +1312,12 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
               onClick={() => setBurstOn((v) => !v)}
               aria-label="Toggle burst mode"
               disabled={isCapturing || countdownValue !== null}
-              className={`h-10 w-10 rounded-full backdrop-blur flex items-center justify-center transition-colors disabled:opacity-50 ${
+              className={`group/tooltip relative h-10 w-10 rounded-full backdrop-blur flex items-center justify-center transition-colors disabled:opacity-50 ${
                 burstOn ? "bg-indigo-600 text-ivory" : "bg-camera-bg/60 text-ivory hover:bg-camera-bg/80"
               }`}
             >
               <Images size={18} strokeWidth={1.75} />
+              <TooltipLabel>Toggle burst mode</TooltipLabel>
             </button>
           </div>
 
@@ -1371,10 +1375,12 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
               onClick={handleCaptureButton}
               aria-label={burstOn ? "Take burst photos" : "Take photo"}
               disabled={isCapturing}
-              className={`h-16 w-16 rounded-full border-4 transition-colors disabled:opacity-60 ${
+              className={`group/tooltip relative h-16 w-16 rounded-full border-4 transition-colors disabled:opacity-60 ${
                 burstOn ? "border-indigo-500" : "border-ivory"
               } bg-ivory/30 hover:bg-ivory/50 disabled:hover:bg-ivory/30`}
-            />
+            >
+              <TooltipLabel>{burstOn ? "Take burst photos" : "Take photo"}</TooltipLabel>
+            </button>
           </div>
 
           {countdownValue !== null && (
@@ -1473,9 +1479,10 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
             <button
               onClick={closeMyPhotos}
               aria-label="Close"
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-ivory/15 text-ivory backdrop-blur hover:bg-ivory/25"
+              className="group/tooltip relative flex h-9 w-9 items-center justify-center rounded-full bg-ivory/15 text-ivory backdrop-blur hover:bg-ivory/25"
             >
               <X size={18} strokeWidth={1.75} />
+              <TooltipLabel>Close</TooltipLabel>
             </button>
           </div>
 
@@ -1512,13 +1519,14 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
                       }}
                       disabled={deleting}
                       aria-label="Delete photo"
-                      className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-ivory backdrop-blur transition-colors hover:bg-red-600 disabled:opacity-60"
+                      className="group/tooltip absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-ivory backdrop-blur transition-colors hover:bg-red-600 disabled:opacity-60"
                     >
                       {deleting ? (
                         <Loader2 size={14} strokeWidth={1.75} className="animate-spin" />
                       ) : (
                         <Trash2 size={14} strokeWidth={1.75} />
                       )}
+                      <TooltipLabel>Delete</TooltipLabel>
                     </button>
                   </div>
                 );
@@ -1549,17 +1557,19 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
                 <button
                   onClick={myPhotoPreviewPrev}
                   aria-label="Previous photo"
-                  className="absolute left-2 rounded-full bg-white/20 p-2 hover:bg-white/30 sm:left-4"
+                  className="group/tooltip absolute left-2 rounded-full bg-white/20 p-2 hover:bg-white/30 sm:left-4"
                 >
                   <ChevronLeft size={24} className="text-white" strokeWidth={1.75} />
+                  <TooltipLabel>Previous</TooltipLabel>
                 </button>
 
                 <button
                   onClick={myPhotoPreviewNext}
                   aria-label="Next photo"
-                  className="absolute right-2 rounded-full bg-white/20 p-2 hover:bg-white/30 sm:right-4"
+                  className="group/tooltip absolute right-2 rounded-full bg-white/20 p-2 hover:bg-white/30 sm:right-4"
                 >
                   <ChevronRight size={24} className="text-white" strokeWidth={1.75} />
+                  <TooltipLabel>Next</TooltipLabel>
                 </button>
               </>
             )}
@@ -1567,9 +1577,10 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
             <button
               onClick={() => handleDownloadMyPhoto(myPhotos[myPhotoPreviewIndex])}
               aria-label="Download photo"
-              className="absolute left-2 top-2 rounded-full bg-white/20 p-2 hover:bg-white/30"
+              className="group/tooltip absolute left-2 top-2 rounded-full bg-white/20 p-2 hover:bg-white/30"
             >
               <Download size={20} className="text-white" strokeWidth={1.75} />
+              <TooltipLabel>Download</TooltipLabel>
             </button>
 
             <button
@@ -1584,21 +1595,23 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
               }}
               disabled={deletingIds.has(myPhotos[myPhotoPreviewIndex].id)}
               aria-label="Delete photo"
-              className="absolute right-14 top-2 rounded-full bg-white/20 p-2 hover:bg-red-600 disabled:opacity-60"
+              className="group/tooltip absolute right-14 top-2 rounded-full bg-white/20 p-2 hover:bg-red-600 disabled:opacity-60"
             >
               {deletingIds.has(myPhotos[myPhotoPreviewIndex].id) ? (
                 <Loader2 size={20} className="animate-spin text-white" strokeWidth={1.75} />
               ) : (
                 <Trash2 size={20} className="text-white" strokeWidth={1.75} />
               )}
+              <TooltipLabel>Delete</TooltipLabel>
             </button>
 
             <button
               onClick={() => setMyPhotoPreviewIndex(null)}
               aria-label="Close preview"
-              className="absolute right-2 top-2 rounded-full bg-white/20 p-2 hover:bg-white/30"
+              className="group/tooltip absolute right-2 top-2 rounded-full bg-white/20 p-2 hover:bg-white/30"
             >
               <X size={20} className="text-white" strokeWidth={1.75} />
+              <TooltipLabel>Close</TooltipLabel>
             </button>
           </div>
         </div>
@@ -1625,9 +1638,10 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
                   <button
                     onClick={dismissFailedUploads}
                     aria-label="Dismiss failed uploads"
-                    className="rounded-full p-1 hover:bg-ivory/20"
+                    className="group/tooltip relative rounded-full p-1 hover:bg-ivory/20"
                   >
                     <X size={14} strokeWidth={1.75} />
+                    <TooltipLabel>Dismiss</TooltipLabel>
                   </button>
                 </div>
               );

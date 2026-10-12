@@ -2,6 +2,7 @@
 
 import { Check, Download } from "lucide-react";
 import type { PhotoFile } from "@/lib/s3";
+import { TooltipLabel } from "../tooltip-label";
 
 type PhotoListProps = {
   photos: PhotoFile[];
@@ -63,13 +64,14 @@ export default function PhotoList({
                     onToggleSelected(photo.id);
                   }}
                   aria-label={selected ? "Deselect photo" : "Select photo"}
-                  className={`flex h-6 w-6 items-center justify-center rounded-full ${
+                  className={`group/tooltip relative flex h-6 w-6 items-center justify-center rounded-full ${
                     selected ? "bg-indigo-600" : "bg-black/20"
                   }`}
                 >
                   {selected && (
                     <Check size={13} strokeWidth={2.5} className="text-ivory" />
                   )}
+                  <TooltipLabel>{selected ? "Deselect" : "Select"}</TooltipLabel>
                 </button>
                 <button
                   onClick={(e) => {
@@ -77,9 +79,10 @@ export default function PhotoList({
                     onDownload(photo.id, photo.name);
                   }}
                   aria-label={`Download ${photo.name}`}
-                  className="rounded-full p-2 text-gray-600 hover:bg-gray-100"
+                  className="group/tooltip relative rounded-full p-2 text-gray-600 hover:bg-gray-100"
                 >
                   <Download size={18} strokeWidth={1.75} />
+                  <TooltipLabel>Download</TooltipLabel>
                 </button>
               </div>
             </button>

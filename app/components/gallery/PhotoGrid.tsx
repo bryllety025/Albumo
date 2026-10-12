@@ -2,6 +2,7 @@
 
 import { Check, Download } from "lucide-react";
 import type { PhotoFile } from "@/lib/s3";
+import { TooltipLabel } from "../tooltip-label";
 
 type PhotoGridProps = {
   photos: PhotoFile[];
@@ -50,11 +51,12 @@ export default function PhotoGrid({
                   onToggleSelected(photo.id);
                 }}
                 aria-label={selected ? "Deselect photo" : "Select photo"}
-                className={`absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full ${
+                className={`group/tooltip absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full ${
                   selected ? "bg-indigo-600" : "bg-black/40"
                 }`}
               >
                 {selected && <Check size={12} strokeWidth={2.5} className="text-ivory" />}
+                <TooltipLabel>{selected ? "Deselect" : "Select"}</TooltipLabel>
               </button>
 
               <button
@@ -63,9 +65,10 @@ export default function PhotoGrid({
                   onDownload(photo.id, photo.name);
                 }}
                 aria-label={`Download ${photo.name}`}
-                className="absolute bottom-1 right-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/40 hover:bg-black/60"
+                className="group/tooltip absolute bottom-1 right-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/40 hover:bg-black/60"
               >
                 <Download size={12} strokeWidth={2} className="text-white" />
+                <TooltipLabel>Download</TooltipLabel>
               </button>
             </div>
           );

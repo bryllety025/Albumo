@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Pencil } from "lucide-react";
 import { getStoredGuestName, setStoredGuestName } from "@/lib/guestName";
+import { TooltipLabel } from "./tooltip-label";
 
 // Asks a guest for their name once per device, the first time they open an
 // event's link, so the owner can see who shared each photo. Skippable: an
@@ -55,9 +56,10 @@ export default function GuestNameGate() {
             type="button"
             onClick={openDialog}
             aria-label="Edit your name"
-            className="text-indigo-400 hover:text-indigo-600"
+            className="group/tooltip relative text-indigo-400 hover:text-indigo-600"
           >
             <Pencil size={14} strokeWidth={1.75} />
+            <TooltipLabel>Edit name</TooltipLabel>
           </button>
         </div>
       ) : storedName === "" ? (
