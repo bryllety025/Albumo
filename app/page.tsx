@@ -9,7 +9,6 @@ import GuestNameGate from "./components/GuestNameGate";
 import { getRequestEventConfig } from "@/lib/event";
 import { fetchEventPhotoLimit, fetchEventUploadsMode, fetchGuestAppFacebookUrl } from "@/lib/backendEvents";
 import { fetchEventTheme } from "@/lib/eventTheme";
-import { onColor } from "@/lib/theme";
 import { isTodayInManila } from "@/lib/manilaDate";
 
 export default async function Home() {
@@ -87,8 +86,12 @@ export default async function Home() {
             theme && theme.photoStamp !== "none"
               ? {
                   mode: theme.photoStamp,
-                  accent: theme.accent,
-                  onAccent: onColor(theme.accent),
+                  style: theme.frameStyle,
+                  width: theme.frameWidth,
+                  color: theme.stampColor,
+                  text: theme.stampText,
+                  caption: theme.stampCaption,
+                  theme: { accent: theme.accent, background: theme.background, foreground: theme.foreground },
                 }
               : null
           }

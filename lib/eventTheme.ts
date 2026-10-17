@@ -2,10 +2,13 @@ import { cache } from "react";
 import {
   BACKGROUND_STYLES,
   COVER_NAME_PATTERN,
+  FRAME_STYLES,
+  FRAME_WIDTHS,
   HEADING_FONTS,
   HERO_STYLES,
   HEX_COLOR_PATTERN,
   MAX_MONOGRAM_LENGTH,
+  MAX_STAMP_TEXT_LENGTH,
   MAX_WELCOME_MESSAGE_LENGTH,
   PHOTO_STAMPS,
   type EventAppearance,
@@ -59,6 +62,14 @@ export const fetchEventTheme = cache(async (slug: string): Promise<EventAppearan
       monogram: text(raw.monogram, MAX_MONOGRAM_LENGTH),
       welcomeMessage: text(raw.welcomeMessage, MAX_WELCOME_MESSAGE_LENGTH),
       photoStamp: oneOf(PHOTO_STAMPS, raw.photoStamp, "none"),
+      frameStyle: oneOf(FRAME_STYLES, raw.frameStyle, "classic"),
+      frameWidth: oneOf(FRAME_WIDTHS, raw.frameWidth, "medium"),
+      // Drawn onto a canvas, so anything but plain hex is no color: the design uses its own.
+      stampColor:
+        typeof raw.stampColor === "string" && HEX_COLOR_PATTERN.test(raw.stampColor) ? raw.stampColor : null,
+      stampText: text(raw.stampText, MAX_STAMP_TEXT_LENGTH),
+      // On unless explicitly turned off, as for a frame saved before this option existed.
+      stampCaption: raw.stampCaption !== false,
       coverImage:
         typeof data.coverImage === "string" && COVER_NAME_PATTERN.test(data.coverImage) ? data.coverImage : null,
     };

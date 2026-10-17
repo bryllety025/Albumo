@@ -7,6 +7,8 @@ export type HeadingFont = "modern" | "elegant" | "playful" | "script" | "bold";
 export type BackgroundStyle = "solid" | "gradient" | "dots" | "confetti" | "stripes";
 export type HeroStyle = "icon" | "monogram" | "cover";
 export type PhotoStamp = "none" | "caption" | "frame";
+export type FrameStyle = "classic" | "polaroid" | "elegant" | "rounded" | "scalloped";
+export type FrameWidth = "thin" | "medium" | "thick";
 
 export type EventTheme = {
   background: string;
@@ -18,6 +20,13 @@ export type EventTheme = {
   monogram: string | null;
   welcomeMessage: string | null;
   photoStamp: PhotoStamp;
+  frameStyle: FrameStyle;
+  frameWidth: FrameWidth;
+  /** The frame's (or caption label's) color, or null for the design's own. */
+  stampColor: string | null;
+  /** The caption, with `{event}` and `{date}` standing for the event's name and date; null for the default. */
+  stampText: string | null;
+  stampCaption: boolean;
 };
 
 /** An event's theme plus its cover photo's file name, as read from albumo-backend. */
@@ -27,9 +36,12 @@ export const HEADING_FONTS: readonly HeadingFont[] = ["modern", "elegant", "play
 export const BACKGROUND_STYLES: readonly BackgroundStyle[] = ["solid", "gradient", "dots", "confetti", "stripes"];
 export const HERO_STYLES: readonly HeroStyle[] = ["icon", "monogram", "cover"];
 export const PHOTO_STAMPS: readonly PhotoStamp[] = ["none", "caption", "frame"];
+export const FRAME_STYLES: readonly FrameStyle[] = ["classic", "polaroid", "elegant", "rounded", "scalloped"];
+export const FRAME_WIDTHS: readonly FrameWidth[] = ["thin", "medium", "thick"];
 
 export const MAX_MONOGRAM_LENGTH = 5;
 export const MAX_WELCOME_MESSAGE_LENGTH = 200;
+export const MAX_STAMP_TEXT_LENGTH = 80;
 
 /** A cover photo's file name as albumo-backend names it: a UUID and an image extension. */
 export const COVER_NAME_PATTERN = /^[0-9a-f-]{36}\.(jpg|png|webp)$/;

@@ -34,7 +34,8 @@ import { getStoredGuestName } from "@/lib/guestName";
 import { updatePhotoCountNotification } from "@/lib/notifications";
 import { getOrCreateUploaderToken } from "@/lib/uploaderToken";
 import { todayInManila } from "@/lib/manilaDate";
-import { applyPhotoStamp } from "@/lib/photoStamp";
+import { pageHeadingFont } from "@/lib/pageFont";
+import { applyPhotoStamp, formatStampDate, type StampSettings } from "@/lib/photoStamp";
 import { TooltipLabel } from "./tooltip-label";
 
 // Filters are stored as structured ops rather than CSS strings so the live
@@ -277,11 +278,10 @@ type Props = {
   /** Whether an admin has manually paused uploads for this event, independent of the date. Takes priority over the date-based closed message when true. */
   uploadsPaused: boolean;
   /**
-   * When the event owner has turned it on, prints the event's name and date onto photos taken with this
-   * camera (never onto ones picked from the library). `accent` is the theme's accent color and `onAccent`
-   * the text color that reads on top of it.
+   * When the event owner has turned it on, prints a caption or a frame, as they designed it, onto photos
+   * taken with this camera (never onto ones picked from the library).
    */
-  stamp: { mode: "caption" | "frame"; accent: string; onAccent: string } | null;
+  stamp: StampSettings | null;
 };
 
 /** "YYYY-MM-DD" as e.g. "December 25, 2026", without any UTC/local shift. */
@@ -295,9 +295,6 @@ function formatEventDate(date: string): string {
 }
 
 export default function Camera({ eventName, photoLimit, canUpload, eventDate, uploadsPaused, stamp }: Props) {
-  const stampMode = stamp?.mode ?? null;
-  const stampAccent = stamp?.accent ?? "";
-  const stampOnAccent = stamp?.onAccent ?? "";
   // Internal math treats "no limit" as Infinity throughout this component --
   // safe for all the arithmetic/array-length logic below (unlike `null`,
   // which would silently break it, e.g. Array.prototype.slice(0, null)
@@ -760,13 +757,12 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
     // preview, so what the guest sees is exactly what gets shared. A stamp
     // that can't be drawn must never cost the guest the photo itself.
     let output = canvas;
-    if (stampMode) {
+    if (stamp) {
       try {
-        output = await applyPhotoStamp(canvas, {
-          mode: stampMode,
-          accent: stampAccent,
-          onAccent: stampOnAccent,
-          text: `${eventName} · ${formatEventDate(eventDate)}`,
+        output = await applyPhotoStamp(canvas, stamp, {
+          eventName,
+          dateLabel: formatStampDate(eventDate),
+          font: pageHeadingFont(),
         });
       } catch {
         output = canvas;
@@ -785,7 +781,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
         0.92
       );
     });
-  }, [zoom, filterIndex, hdrOn, facingMode, stampMode, stampAccent, stampOnAccent, eventName, eventDate]);
+  }, [zoom, filterIndex, hdrOn, facingMode, stamp, eventName, eventDate]);
 
   const fireFlash = useCallback(() => {
     if (!flashOn) return;
