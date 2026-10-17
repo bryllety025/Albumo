@@ -15,6 +15,20 @@
   --color-blue-100: #dbeafe;
   --color-blue-600: #2563eb;
   --color-gray-50: #f7f7f8;
+
+  /* What sits on top of an accent-filled button or badge. White for the
+     default indigo; an event theme with a light accent flips it to dark. */
+  --color-on-accent: #ffffff;
+
+  /* Cards and list rows that sit on the page: white on the default look,
+     a shade lighter than the page on a dark theme (see lib/theme.ts). */
+  --color-surface: #ffffff;
+
+  /* The event name's typeface, size and weight. A theme's heading style
+     overrides these on <html> (see lib/theme.ts); this is the default look. */
+  --font-heading: Arial, Helvetica, sans-serif;
+  --heading-scale: 1;
+  --heading-weight: 700;
 }
 
 @theme inline {
@@ -30,15 +44,33 @@
   --color-blue-100: var(--color-blue-100);
   --color-blue-600: var(--color-blue-600);
   --color-gray-50: var(--color-gray-50);
+  --color-on-accent: var(--color-on-accent);
+  --color-surface: var(--color-surface);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-display: var(--font-display-serif);
+  --font-display: var(--font-heading);
 }
 
 body {
   background: var(--background);
+  /* A theme's gradient or pattern; unset (so none) for a solid background. */
+  background-image: var(--page-bg-image, none);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Only one of the two logo variants shows: the dark artwork by default, the
+   light one when the event's theme background is dark (see app/layout.tsx). */
+.logo-on-dark {
+  display: none;
+}
+
+html[data-tone="dark"] .logo-on-light {
+  display: none;
+}
+
+html[data-tone="dark"] .logo-on-dark {
+  display: block;
 }
 
 /* Tailwind v4's preflight no longer sets this, so native <button>s default

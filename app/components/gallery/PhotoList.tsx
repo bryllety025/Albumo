@@ -65,11 +65,11 @@ export default function PhotoList({
                   }}
                   aria-label={selected ? "Deselect photo" : "Select photo"}
                   className={`group/tooltip relative flex h-6 w-6 items-center justify-center rounded-full ${
-                    selected ? "bg-indigo-600" : "bg-black/20"
+                    selected ? "bg-indigo-600" : "bg-foreground/20"
                   }`}
                 >
                   {selected && (
-                    <Check size={13} strokeWidth={2.5} className="text-ivory" />
+                    <Check size={13} strokeWidth={2.5} className="text-on-accent" />
                   )}
                   <TooltipLabel>{selected ? "Deselect" : "Select"}</TooltipLabel>
                 </button>

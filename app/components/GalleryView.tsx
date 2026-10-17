@@ -147,7 +147,7 @@ export default function GalleryView() {
               onClick={() => setLayout("grid")}
               aria-label="Grid layout"
               className={`group/tooltip relative rounded-full p-1.5 ${
-                layout === "grid" ? "bg-indigo-600 text-ivory" : "text-foreground"
+                layout === "grid" ? "bg-indigo-600 text-on-accent" : "text-foreground"
               }`}
             >
               <LayoutGrid size={16} strokeWidth={1.75} />
@@ -157,7 +157,7 @@ export default function GalleryView() {
               onClick={() => setLayout("list")}
               aria-label="List layout"
               className={`group/tooltip relative rounded-full p-1.5 ${
-                layout === "list" ? "bg-indigo-600 text-ivory" : "text-foreground"
+                layout === "list" ? "bg-indigo-600 text-on-accent" : "text-foreground"
               }`}
             >
               <List size={16} strokeWidth={1.75} />

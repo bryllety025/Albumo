@@ -55,7 +55,7 @@ export default function PhotoGrid({
                   selected ? "bg-indigo-600" : "bg-black/40"
                 }`}
               >
-                {selected && <Check size={12} strokeWidth={2.5} className="text-ivory" />}
+                {selected && <Check size={12} strokeWidth={2.5} className="text-on-accent" />}
                 <TooltipLabel>{selected ? "Deselect" : "Select"}</TooltipLabel>
               </button>
 

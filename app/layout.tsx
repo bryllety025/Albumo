@@ -1,7 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
+import type { CSSProperties } from "react";
+import { Bebas_Neue, Dancing_Script, Fredoka, Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { getRequestEventConfig } from "@/lib/event";
+import { fetchEventTheme } from "@/lib/eventTheme";
+import { isDarkColor, themeStyleVars } from "@/lib/theme";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -16,6 +19,28 @@ const geistMono = Geist_Mono({
 const playfairDisplay = Playfair_Display({
   variable: "--font-display-serif",
   subsets: ["latin"],
+});
+
+// The other heading styles an event owner can pick (see lib/theme.ts). Not
+// preloaded: most events use none of them, so each file is only fetched by a
+// page whose heading actually uses it.
+const fredoka = Fredoka({
+  variable: "--font-fredoka",
+  subsets: ["latin"],
+  preload: false,
+});
+
+const dancingScript = Dancing_Script({
+  variable: "--font-dancing-script",
+  subsets: ["latin"],
+  preload: false,
+});
+
+const bebasNeue = Bebas_Neue({
+  variable: "--font-bebas-neue",
+  subsets: ["latin"],
+  weight: "400",
+  preload: false,
 });
 
 // Reads the event this device is registered to (see lib/event.ts) so the
@@ -40,19 +65,31 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export const viewport: Viewport = {
-  themeColor: "#12131a",
-};
+// The browser's own chrome (the status bar on a phone, the PWA title bar)
+// takes the event's background, so a themed page doesn't sit under a
+// mismatched dark strip.
+export async function generateViewport(): Promise<Viewport> {
+  const config = await getRequestEventConfig();
+  const theme = config ? await fetchEventTheme(config.slug) : null;
 
-export default function RootLayout({
+  return { themeColor: theme?.background ?? "#12131a" };
+}
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const config = await getRequestEventConfig();
+  const theme = config ? await fetchEventTheme(config.slug) : null;
+
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${playfairDisplay.variable} h-dvh antialiased`}
+      // Lets globals.css show whichever logo reads on this background.
+      data-tone={theme && isDarkColor(theme.background) ? "dark" : "light"}
+      style={theme ? (themeStyleVars(theme) as CSSProperties) : undefined}
+      className={`${geistSans.variable} ${geistMono.variable} ${playfairDisplay.variable} ${fredoka.variable} ${dancingScript.variable} ${bebasNeue.variable} h-dvh antialiased`}
     >
       <body className="h-dvh flex flex-col overflow-hidden">{children}</body>
     </html>

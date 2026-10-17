@@ -34,6 +34,7 @@ import { getStoredGuestName } from "@/lib/guestName";
 import { updatePhotoCountNotification } from "@/lib/notifications";
 import { getOrCreateUploaderToken } from "@/lib/uploaderToken";
 import { todayInManila } from "@/lib/manilaDate";
+import { applyPhotoStamp } from "@/lib/photoStamp";
 import { TooltipLabel } from "./tooltip-label";
 
 // Filters are stored as structured ops rather than CSS strings so the live
@@ -275,6 +276,12 @@ type Props = {
   eventDate: string;
   /** Whether an admin has manually paused uploads for this event, independent of the date. Takes priority over the date-based closed message when true. */
   uploadsPaused: boolean;
+  /**
+   * When the event owner has turned it on, prints the event's name and date onto photos taken with this
+   * camera (never onto ones picked from the library). `accent` is the theme's accent color and `onAccent`
+   * the text color that reads on top of it.
+   */
+  stamp: { mode: "caption" | "frame"; accent: string; onAccent: string } | null;
 };
 
 /** "YYYY-MM-DD" as e.g. "December 25, 2026", without any UTC/local shift. */
@@ -287,7 +294,10 @@ function formatEventDate(date: string): string {
   });
 }
 
-export default function Camera({ eventName, photoLimit, canUpload, eventDate, uploadsPaused }: Props) {
+export default function Camera({ eventName, photoLimit, canUpload, eventDate, uploadsPaused, stamp }: Props) {
+  const stampMode = stamp?.mode ?? null;
+  const stampAccent = stamp?.accent ?? "";
+  const stampOnAccent = stamp?.onAccent ?? "";
   // Internal math treats "no limit" as Infinity throughout this component --
   // safe for all the arithmetic/array-length logic below (unlike `null`,
   // which would silently break it, e.g. Array.prototype.slice(0, null)
@@ -709,44 +719,62 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
     [canUpload]
   );
 
-  const captureFrame = useCallback((): Promise<PreviewItem | null> => {
+  const captureFrame = useCallback(async (): Promise<PreviewItem | null> => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return null;
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) return null;
+
+    const sw = vw / zoom;
+    const sh = vh / zoom;
+    const sx = (vw - sw) / 2;
+    const sy = (vh - sh) / 2;
+
+    canvas.width = vw;
+    canvas.height = vh;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    ctx.save();
+    if (facingMode === "user") {
+      ctx.translate(vw, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, vw, vh);
+    ctx.restore();
+
+    // Filters are applied to the pixels rather than via ctx.filter, which is
+    // silently unsupported on some mobile browsers (older iOS Safari) and
+    // would leave the captured photo unfiltered while the preview looked fine.
+    const ops = composeFilterOps(filterIndex, hdrOn);
+    if (ops.length > 0) {
+      const imageData = ctx.getImageData(0, 0, vw, vh);
+      applyFilterOps(imageData, ops);
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    // The event owner's caption or frame goes on after the filters, so it
+    // keeps its own colors. It's baked into the photo here, before the
+    // preview, so what the guest sees is exactly what gets shared. A stamp
+    // that can't be drawn must never cost the guest the photo itself.
+    let output = canvas;
+    if (stampMode) {
+      try {
+        output = await applyPhotoStamp(canvas, {
+          mode: stampMode,
+          accent: stampAccent,
+          onAccent: stampOnAccent,
+          text: `${eventName} · ${formatEventDate(eventDate)}`,
+        });
+      } catch {
+        output = canvas;
+      }
+    }
+
     return new Promise((resolve) => {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      if (!video || !canvas) return resolve(null);
-      const vw = video.videoWidth;
-      const vh = video.videoHeight;
-      if (!vw || !vh) return resolve(null);
-
-      const sw = vw / zoom;
-      const sh = vh / zoom;
-      const sx = (vw - sw) / 2;
-      const sy = (vh - sh) / 2;
-
-      canvas.width = vw;
-      canvas.height = vh;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return resolve(null);
-
-      ctx.save();
-      if (facingMode === "user") {
-        ctx.translate(vw, 0);
-        ctx.scale(-1, 1);
-      }
-      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, vw, vh);
-      ctx.restore();
-
-      // Filters are applied to the pixels rather than via ctx.filter, which is
-      // silently unsupported on some mobile browsers (older iOS Safari) and
-      // would leave the captured photo unfiltered while the preview looked fine.
-      const ops = composeFilterOps(filterIndex, hdrOn);
-      if (ops.length > 0) {
-        const imageData = ctx.getImageData(0, 0, vw, vh);
-        applyFilterOps(imageData, ops);
-        ctx.putImageData(imageData, 0, 0);
-      }
-
-      canvas.toBlob(
+      output.toBlob(
         (blob) => {
           if (!blob) return resolve(null);
           const ext = "jpg";
@@ -757,7 +785,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
         0.92
       );
     });
-  }, [zoom, filterIndex, hdrOn, facingMode]);
+  }, [zoom, filterIndex, hdrOn, facingMode, stampMode, stampAccent, stampOnAccent, eventName, eventDate]);
 
   const fireFlash = useCallback(() => {
     if (!flashOn) return;
@@ -1175,7 +1203,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
 
             <button
               onClick={openLibrary}
-              className="flex items-center gap-3 bg-white px-4 py-4 text-left transition-colors hover:bg-gray-50"
+              className="flex items-center gap-3 bg-surface px-4 py-4 text-left transition-colors hover:bg-gray-50"
             >
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-100">
                 <ImageIcon size={22} strokeWidth={1.75} className="text-blue-600" />
@@ -1198,7 +1226,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
             {myPhotos.length > 0 && (
               <button
                 onClick={() => setMyPhotosOpen(true)}
-                className="flex items-center gap-3 bg-white px-4 py-4 text-left transition-colors hover:bg-gray-50"
+                className="flex items-center gap-3 bg-surface px-4 py-4 text-left transition-colors hover:bg-gray-50"
               >
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100">
                   <Images size={22} strokeWidth={1.75} className="text-emerald-600" />
@@ -1288,7 +1316,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
               aria-label="Toggle flash"
               disabled={isCapturing || countdownValue !== null}
               className={`group/tooltip relative h-10 w-10 rounded-full backdrop-blur flex items-center justify-center transition-colors disabled:opacity-50 ${
-                flashOn ? "bg-indigo-600 text-ivory" : "bg-camera-bg/60 text-ivory hover:bg-camera-bg/80"
+                flashOn ? "bg-indigo-600 text-on-accent" : "bg-camera-bg/60 text-ivory hover:bg-camera-bg/80"
               }`}
             >
               {flashOn ? (
@@ -1303,7 +1331,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
               aria-label="Toggle HDR"
               disabled={isCapturing || countdownValue !== null}
               className={`h-10 rounded-full px-3 text-xs font-medium backdrop-blur flex items-center justify-center transition-colors disabled:opacity-50 ${
-                hdrOn ? "bg-indigo-600 text-ivory" : "bg-camera-bg/60 text-ivory hover:bg-camera-bg/80"
+                hdrOn ? "bg-indigo-600 text-on-accent" : "bg-camera-bg/60 text-ivory hover:bg-camera-bg/80"
               }`}
             >
               HDR
@@ -1313,7 +1341,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
               aria-label="Toggle burst mode"
               disabled={isCapturing || countdownValue !== null}
               className={`group/tooltip relative h-10 w-10 rounded-full backdrop-blur flex items-center justify-center transition-colors disabled:opacity-50 ${
-                burstOn ? "bg-indigo-600 text-ivory" : "bg-camera-bg/60 text-ivory hover:bg-camera-bg/80"
+                burstOn ? "bg-indigo-600 text-on-accent" : "bg-camera-bg/60 text-ivory hover:bg-camera-bg/80"
               }`}
             >
               <Images size={18} strokeWidth={1.75} />
@@ -1330,7 +1358,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
                   disabled={isCapturing || countdownValue !== null}
                   className={`shrink-0 rounded-full px-4 py-1.5 text-sm transition-colors disabled:opacity-50 ${
                     i === filterIndex
-                      ? "bg-indigo-600 text-ivory"
+                      ? "bg-indigo-600 text-on-accent"
                       : "bg-ivory/15 text-ivory backdrop-blur hover:bg-ivory/25"
                   }`}
                 >
@@ -1347,7 +1375,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
                   disabled={isCapturing}
                   className={`rounded-full px-4 py-1.5 text-sm transition-colors disabled:opacity-50 ${
                     t === timerOption
-                      ? "bg-indigo-600 text-ivory"
+                      ? "bg-indigo-600 text-on-accent"
                       : "bg-ivory/15 text-ivory backdrop-blur hover:bg-ivory/25"
                   }`}
                 >
@@ -1428,7 +1456,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
                       }`}
                     >
                       {item.selected && (
-                        <Check size={12} strokeWidth={2.5} className="text-ivory" />
+                        <Check size={12} strokeWidth={2.5} className="text-on-accent" />
                       )}
                     </span>
                   </button>

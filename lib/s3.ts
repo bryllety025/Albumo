@@ -141,3 +141,22 @@ export async function getPhoto(
     name: id,
   };
 }
+
+// An event's cover photo lives outside the event's own folder (so it never
+// shows up as a guest photo): albumo-backend writes it to
+// `_covers/<slug>/<name>`. `name` must already have been checked against
+// COVER_NAME_PATTERN by the caller -- it's only ever joined onto this fixed
+// prefix, never used to reach elsewhere in the bucket.
+export async function getCover(config: EventConfig, name: string): Promise<Buffer> {
+  const res = await getClient(config).send(
+    new GetObjectCommand({
+      Bucket: config.awsS3Bucket,
+      Key: `_covers/${config.slug}/${name}`,
+    })
+  );
+
+  if (!res.Body) {
+    throw new Error(`Empty S3 response body for cover ${name}`);
+  }
+  return Buffer.from(await res.Body.transformToByteArray());
+}
