@@ -5,7 +5,7 @@ import { EVENT_COOKIE, encodeEventCookie } from "@/lib/event";
 
 // Top-level path segments that are always real app routes, never a
 // candidate event slug.
-const RESERVED_TOP_LEVEL_PATHS = new Set(["", "gallery", "api"]);
+const RESERVED_TOP_LEVEL_PATHS = new Set(["", "gallery", "album", "api"]);
 
 const EVENT_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 

@@ -20,6 +20,23 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Albums
+
+When the event owner saves an album in the dashboard, its pages are sent to `albumo-backend`
+as pictures and kept in the bucket under `_albums/<slug>/<albumId>/<n>.jpg` (`n` from 0,
+the cover). The guest page then shows a **View the album** card above the camera
+(`app/components/AlbumCard.tsx`), which opens the album to flip through (`/album/<id>`,
+`app/components/AlbumViewer.tsx`: two pages across the spine and a 3D page turn on a wide
+screen, one page at a time with a slide on a phone). `/album` lists them when there is more
+than one.
+
+- The list comes from `GET /events/public/<slug>/albums` (`fetchEventAlbums` in
+  `lib/backendEvents.ts`), live like the uploads mode, and only albums it lists open.
+- The pictures are read straight from the bucket with this app's own credentials, through
+  `app/api/album/[id]/[page]/route.ts` (`private`, cached for good: the `v` in each address
+  is the time the pages were published). The credentials need `s3:GetObject` on
+  `_albums/*`, as they already do for `_covers/*`.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

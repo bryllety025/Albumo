@@ -5,9 +5,10 @@ import Camera from "./components/Camera";
 import ViewGalleryButton from "./components/ViewGalleryButton";
 import RecentPhotosStrip from "./components/RecentPhotosStrip";
 import NotificationToggle from "./components/NotificationToggle";
+import AlbumCard from "./components/AlbumCard";
 import GuestNameGate from "./components/GuestNameGate";
 import { getRequestEventConfig } from "@/lib/event";
-import { fetchEventPhotoLimit, fetchEventUploadsMode, fetchGuestAppFacebookUrl } from "@/lib/backendEvents";
+import { fetchEventAlbums, fetchEventPhotoLimit, fetchEventUploadsMode, fetchGuestAppFacebookUrl } from "@/lib/backendEvents";
 import { fetchEventTheme } from "@/lib/eventTheme";
 import { isTodayInManila } from "@/lib/manilaDate";
 
@@ -31,11 +32,12 @@ export default async function Home() {
   // default, and an admin's own upload-policy choice) -- fresh calls every
   // load, not part of the long-lived event cookie. See fetchEventPhotoLimit's
   // own comment for why.
-  const [photoLimit, uploadsMode, facebookUrl, theme] = await Promise.all([
+  const [photoLimit, uploadsMode, facebookUrl, theme, albums] = await Promise.all([
     fetchEventPhotoLimit(slug),
     fetchEventUploadsMode(slug),
     fetchGuestAppFacebookUrl(),
     fetchEventTheme(slug),
+    fetchEventAlbums(slug),
   ]);
   // `disabled`/`always_open` are an admin override in either direction;
   // `automatic` (the default) falls back to the original design -- guests
@@ -74,6 +76,14 @@ export default async function Home() {
             "Every photo you add joins the shared event album instantly, for everyone to see."}
         </p>
       </div>
+
+      {/* An album only exists once the owner has made it from the photos, so it comes before the camera: it is
+          what a guest has come back for. */}
+      {albums.length > 0 && (
+        <div className="mb-4 flex shrink-0 flex-col overflow-hidden rounded-2xl shadow-sm ring-1 ring-foreground/10">
+          <AlbumCard albums={albums} />
+        </div>
+      )}
 
       <div className="flex shrink-0 flex-col overflow-hidden rounded-2xl">
         <Camera

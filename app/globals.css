@@ -82,3 +82,110 @@ button:not(:disabled) {
 button:disabled {
   cursor: not-allowed;
 }
+
+/* The album viewer (app/components/AlbumViewer.tsx): a book whose pages turn around the spine. A stage holds the
+   book; the book holds pages (each half the stage's width, or all of it on a narrow screen), and a turning leaf. */
+.ab-stage {
+  position: relative;
+  perspective: 2600px;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y;
+}
+
+.ab-book {
+  position: absolute;
+  inset: 0;
+  transition: transform 0.72s cubic-bezier(0.45, 0.05, 0.2, 1);
+}
+
+.ab-page {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  background: #fff;
+  box-shadow: 0 18px 36px -14px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.ab-single .ab-page {
+  width: 100%;
+}
+
+.ab-sheet {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  overflow: hidden;
+}
+
+.ab-sheet img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  /* Hides the hairline that would otherwise show where two pages meet. */
+  transform: scale(1.006);
+}
+
+/* The curve into the spine. */
+.ab-sheet::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7%;
+  pointer-events: none;
+}
+
+.ab-sheet.ab-spine-right::after {
+  right: 0;
+  background: linear-gradient(to left, rgba(0, 0, 0, 0.2), transparent);
+}
+
+.ab-sheet.ab-spine-left::after {
+  left: 0;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.2), transparent);
+}
+
+.ab-single .ab-sheet::after {
+  display: none;
+}
+
+.ab-leaf {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  z-index: 10;
+  transform-style: preserve-3d;
+  transition: transform 0.72s cubic-bezier(0.45, 0.05, 0.2, 1);
+  box-shadow: 0 0 26px rgba(0, 0, 0, 0.3);
+}
+
+.ab-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.ab-face-back {
+  transform: rotateY(180deg);
+}
+
+.ab-slide {
+  position: absolute;
+  inset: 0;
+  transition: transform 0.38s ease, opacity 0.38s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ab-book,
+  .ab-leaf,
+  .ab-slide {
+    transition: none;
+  }
+}

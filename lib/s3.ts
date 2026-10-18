@@ -160,3 +160,22 @@ export async function getCover(config: EventConfig, name: string): Promise<Buffe
   }
   return Buffer.from(await res.Body.transformToByteArray());
 }
+
+// One page of a saved album, as the picture albumo-backend was sent when the owner shared it. Like the cover
+// photo these live outside the event's own folder (`_albums/<slug>/<albumId>/<n>.jpg`, n counting from 0 at the
+// cover), so they never show up as a guest photo. `albumId` must already have been checked against
+// ALBUM_ID_PATTERN and `index` be a whole number by the caller -- they're only ever joined onto this fixed
+// prefix, never used to reach elsewhere in the bucket.
+export async function getAlbumPage(config: EventConfig, albumId: string, index: number): Promise<Buffer> {
+  const res = await getClient(config).send(
+    new GetObjectCommand({
+      Bucket: config.awsS3Bucket,
+      Key: `_albums/${config.slug}/${albumId}/${index}.jpg`,
+    })
+  );
+
+  if (!res.Body) {
+    throw new Error(`Empty S3 response body for album page ${albumId}/${index}`);
+  }
+  return Buffer.from(await res.Body.transformToByteArray());
+}

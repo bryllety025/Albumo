@@ -2,6 +2,8 @@
 // corresponds to a real event before proxy.ts trusts it enough to register
 // this device to it via a cookie.
 
+import { ALBUM_ID_PATTERN, MAX_ALBUM_PAGES, type GuestAlbum } from "./album";
+
 const EVENTS_API_URL = process.env.EVENTS_API_URL ?? "http://localhost:3000";
 
 export type VerifiedEvent = {
@@ -94,6 +96,39 @@ export async function fetchEventUploadsMode(slug: string): Promise<UploadsMode> 
   } catch (err) {
     console.error("Failed to read the uploads mode from albumo-backend:", err);
     return "automatic";
+  }
+}
+
+// The albums the event owner has saved and shared, oldest first. Live `no-store`, like the uploads mode: the
+// album should be on the guest page the next time a guest opens it, not up to a minute later. Returns an empty
+// list (never throws) when there are none and when the backend can't be reached -- the guest app just doesn't
+// show an album then. Each entry is checked before it is trusted: its id ends up in a bucket key.
+export async function fetchEventAlbums(slug: string): Promise<GuestAlbum[]> {
+  try {
+    const res = await fetch(`${EVENTS_API_URL}/events/public/${encodeURIComponent(slug)}/albums`, {
+      headers: { "x-api-key": process.env.EVENTS_API_KEY ?? "" },
+      cache: "no-store",
+    });
+    if (!res.ok) return [];
+
+    const data = (await res.json()) as { items?: unknown };
+    if (!Array.isArray(data.items)) return [];
+
+    const albums: GuestAlbum[] = [];
+    for (const item of data.items as Record<string, unknown>[]) {
+      const { id, title, pageCount, publishedAt } = item ?? {};
+      if (
+        typeof id === "string" && ALBUM_ID_PATTERN.test(id) &&
+        typeof pageCount === "number" && Number.isInteger(pageCount) && pageCount >= 2 && pageCount <= MAX_ALBUM_PAGES &&
+        typeof publishedAt === "string" && Number.isFinite(Date.parse(publishedAt))
+      ) {
+        albums.push({ id, title: typeof title === "string" ? title.trim().slice(0, 80) : "", pageCount, publishedAt });
+      }
+    }
+    return albums;
+  } catch (err) {
+    console.error("Failed to read the albums from albumo-backend:", err);
+    return [];
   }
 }
 
