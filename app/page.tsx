@@ -7,6 +7,7 @@ import RecentPhotosStrip from "./components/RecentPhotosStrip";
 import NotificationToggle from "./components/NotificationToggle";
 import AlbumCard from "./components/AlbumCard";
 import GuestNameGate from "./components/GuestNameGate";
+import HowToUse from "./components/HowToUse";
 import { getRequestEventConfig } from "@/lib/event";
 import { fetchEventAlbums, fetchEventPhotoLimit, fetchEventUploadsMode, fetchGuestAppFacebookUrl } from "@/lib/backendEvents";
 import { fetchEventTheme } from "@/lib/eventTheme";
@@ -113,17 +114,20 @@ export default async function Home() {
 
       <NotificationToggle eventName={eventName} photoLimit={photoLimit} />
 
-      {facebookUrl && (
-        <a
-          href={facebookUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-4 flex shrink-0 items-center justify-center gap-1.5 text-center text-xs font-medium text-gray-500"
-        >
-          <ThumbsUp size={13} strokeWidth={1.75} />
-          Follow us on Facebook
-        </a>
-      )}
+      <div className="mt-4 flex shrink-0 flex-wrap items-center justify-center gap-x-5 gap-y-2">
+        <HowToUse photoLimit={photoLimit} facebookUrl={facebookUrl} />
+        {facebookUrl && (
+          <a
+            href={facebookUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-1.5 text-center text-xs font-medium text-gray-500"
+          >
+            <ThumbsUp size={13} strokeWidth={1.75} />
+            Follow us on Facebook
+          </a>
+        )}
+      </div>
     </div>
   );
 }

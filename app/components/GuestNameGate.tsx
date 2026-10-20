@@ -98,7 +98,12 @@ export default function GuestNameGate() {
               autoFocus
               className="mt-4 w-full rounded-xl border border-gray-200 px-4 py-3 text-base text-foreground outline-none focus:border-indigo-500"
               onKeyDown={(event) => {
-                if (event.key === "Enter" && draftName.trim()) handleSave(draftName.trim());
+                if (event.key === "Enter" && draftName.trim()) {
+                  // Saving can open the "How to use" walkthrough and move focus to a button in it within this
+                  // same keystroke; without this, the browser's follow-up keypress would press that button.
+                  event.preventDefault();
+                  handleSave(draftName.trim());
+                }
               }}
             />
             <div className="mt-4 flex gap-3">
