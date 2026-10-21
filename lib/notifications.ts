@@ -29,7 +29,7 @@ export async function updatePhotoCountNotification(
     await registration.showNotification(eventName, {
       body:
         remaining > 0
-          ? `${remaining} photo${remaining === 1 ? "" : "s"} left tonight`
+          ? `${remaining} photo${remaining === 1 ? "" : "s"} left for this event`
           : "Photo limit reached — thank you!",
       icon: "/icons/icon-192.png",
       tag: "photo-count",

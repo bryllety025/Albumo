@@ -7,17 +7,18 @@ import {
   updatePhotoCountNotification,
   isIosNotInstalled,
 } from "@/lib/notifications";
-import { getStoredCount } from "@/lib/photoStorage";
 
 type Status = "unsupported" | "ios-not-installed" | "idle" | "granted" | "denied";
 
 type Props = {
   eventName: string;
-  /** Null means the event has no photo limit. */
+  /** The most photos the whole event may hold. Null means the event has no photo limit. */
   photoLimit: number | null;
+  /** How many photos the whole event held when the page loaded. */
+  photosUsed: number;
 };
 
-export default function NotificationToggle({ eventName, photoLimit }: Props) {
+export default function NotificationToggle({ eventName, photoLimit, photosUsed }: Props) {
   const [status, setStatus] = useState<Status>("idle");
 
   useEffect(() => {
@@ -43,13 +44,13 @@ export default function NotificationToggle({ eventName, photoLimit }: Props) {
       const granted = await requestNotificationPermission();
       if (granted) {
         setStatus("granted");
-        const remaining = photoLimit === null ? null : Math.max(photoLimit - getStoredCount(), 0);
+        const remaining = photoLimit === null ? null : Math.max(photoLimit - photosUsed, 0);
         updatePhotoCountNotification(remaining, eventName);
       } else {
         setStatus("denied");
       }
     })();
-  }, [eventName, photoLimit]);
+  }, [eventName, photoLimit, photosUsed]);
 
   if (status === "ios-not-installed") {
     return (

@@ -61,7 +61,7 @@ function buildSteps(photoLimit: number | null): Step[] {
         <>
           Check your photo, then tap <Em>Save</Em>, or <Em>Try again</Em> for a new one. Photos upload in the
           background, so you can keep shooting.
-          {photoLimit !== null && <> You can share up to {photoLimit} photos from this device.</>}
+          {photoLimit !== null && <> This album holds up to {photoLimit} photos in total, shared by everyone.</>}
         </>
       ),
     },
@@ -79,7 +79,7 @@ function buildSteps(photoLimit: number | null): Step[] {
 }
 
 type Props = {
-  /** Null means this event has no photo limit. */
+  /** The most photos the whole event may hold. Null means this event has no photo limit. */
   photoLimit: number | null;
   /** The admin's Facebook link; without one the walkthrough ends on a plain "all set" step. */
   facebookUrl: string | null;

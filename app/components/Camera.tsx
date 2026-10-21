@@ -21,9 +21,6 @@ import {
   Download,
 } from "lucide-react";
 import {
-  getStoredCount,
-  incrementStoredCount,
-  decrementStoredCount,
   createThumbnail,
   getMyPhotos,
   addMyPhoto,
@@ -269,8 +266,10 @@ function buildFilename(ext: string) {
 
 type Props = {
   eventName: string;
-  /** Null means this event has no photo limit. */
+  /** The most photos the whole event may hold, across every guest's device. Null means this event has no photo limit. */
   photoLimit: number | null;
+  /** How many photos the whole event held when this page loaded -- what `photoLimit` is measured against. */
+  photosUsed: number;
   /** Whether today is the event's own day AND an admin hasn't paused uploads -- both must hold to take or upload a photo. */
   canUpload: boolean;
   /** The event's date, "YYYY-MM-DD", shown in the closed message when `canUpload` is false. */
@@ -294,13 +293,12 @@ function formatEventDate(date: string): string {
   });
 }
 
-export default function Camera({ eventName, photoLimit, canUpload, eventDate, uploadsPaused, stamp }: Props) {
+export default function Camera({ eventName, photoLimit, photosUsed, canUpload, eventDate, uploadsPaused, stamp }: Props) {
   // Internal math treats "no limit" as Infinity throughout this component --
   // safe for all the arithmetic/array-length logic below (unlike `null`,
   // which would silently break it, e.g. Array.prototype.slice(0, null)
-  // acting as 0, not "no cap"). Never itself rendered as text: the one spot
-  // that would ("You've shared N photos") only shows once the limit is
-  // reached, which never happens when this is Infinity.
+  // acting as 0, not "no cap"). Never itself rendered as text: the spots
+  // that show a limit only do so when `photoLimit` is not null.
   const effectivePhotoLimit = photoLimit ?? Infinity;
 
   const libraryInputRef = useRef<HTMLInputElement>(null);
@@ -331,7 +329,11 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
   const [flashActive, setFlashActive] = useState(false);
   const [previewItems, setPreviewItems] = useState<PreviewItem[]>([]);
   const [isSaving, setIsSaving] = useState(false);
-  const [photoCount, setPhotoCount] = useState<number | null>(null);
+  // How many photos the whole event holds, as far as this page knows: what
+  // the server said at load, plus this device's own photos still waiting to
+  // upload (each reserves a slot the moment it is saved), brought back in
+  // line with the server's own count whenever an upload comes back.
+  const [photoCount, setPhotoCount] = useState(photosUsed);
   const [uploadQueue, setUploadQueue] = useState<UploadJob[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [myPhotos, setMyPhotos] = useState<MyPhoto[]>([]);
@@ -350,7 +352,6 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setPhotoCount(getStoredCount());
     setMyPhotos(getMyPhotos());
     uploaderTokenRef.current = getOrCreateUploaderToken();
   }, []);
@@ -392,6 +393,27 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
             body: formData,
           });
           if (res.status === 409 || res.status === 403) {
+            const body = (await res.json().catch(() => null)) as { code?: string } | null;
+
+            if (body?.code === "photo_limit_reached") {
+              // Other guests' photos count toward the same total, so the
+              // event can fill up while this device still thinks it has room.
+              // Every photo still waiting would be refused the same way, so
+              // they all go at once (one message, not one per photo), and the
+              // count snaps to the limit so the camera stops offering to
+              // take more.
+              const dropped = queueRef.current.length;
+              queueRef.current = [];
+              syncQueue();
+              if (photoLimit !== null) setPhotoCount(photoLimit);
+              showToast(
+                dropped > 1
+                  ? `This event's photo limit was reached, so ${dropped} photos weren't shared.`
+                  : "This event's photo limit was reached, so that photo wasn't shared.",
+              );
+              continue;
+            }
+
             // Permanently blocked for this event (its guest limit has been
             // reached, or an admin has paused uploads) -- never retryable,
             // unlike every other failure below, so the job is dropped
@@ -400,7 +422,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
             // giving up on a failed upload does below.
             queueRef.current = queueRef.current.filter((j) => j !== job);
             syncQueue();
-            setPhotoCount(decrementStoredCount());
+            setPhotoCount((count) => Math.max(count - 1, 0));
             showToast(
               res.status === 403
                 ? "Uploads are currently paused for this event. New photos can't be added right now."
@@ -409,10 +431,16 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
             continue;
           }
           if (!res.ok) throw new Error(await res.text());
-          const data = (await res.json()) as { fileId: string };
+          const data = (await res.json()) as { fileId: string; photoCount?: number | null };
           queueRef.current = queueRef.current.filter((j) => j !== job);
           syncQueue();
           setMyPhotos(addMyPhoto(data.fileId, job.thumbnail));
+          // The server's count includes everyone's photos, so this also
+          // catches up with uploads other guests have made since the page
+          // loaded; photos of this device still in the queue stay reserved.
+          if (typeof data.photoCount === "number") {
+            setPhotoCount(data.photoCount + queueRef.current.length);
+          }
         } catch {
           job.status = "error";
           syncQueue();
@@ -422,7 +450,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
     } finally {
       isProcessingRef.current = false;
     }
-  }, [syncQueue, showToast]);
+  }, [syncQueue, showToast, photoLimit]);
 
   const enqueueUpload = useCallback(
     (blob: Blob, filename: string, thumbnail: string, uploaderName?: string) => {
@@ -450,11 +478,9 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
     queueRef.current = queueRef.current.filter((j) => j.status !== "error");
     syncQueue();
     if (dropped > 0) {
-      let next = photoCount ?? getStoredCount();
-      for (let i = 0; i < dropped; i++) next = decrementStoredCount();
-      setPhotoCount(next);
+      setPhotoCount((count) => Math.max(count - dropped, 0));
     }
-  }, [photoCount, syncQueue]);
+  }, [syncQueue]);
 
   // Deleting a shared photo frees the limit slot it was taking up, same as
   // giving up on a failed upload above. Returns whether it actually succeeded,
@@ -470,7 +496,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
         });
         if (!res.ok) throw new Error(await res.text());
         setMyPhotos(removeMyPhoto(photo.id));
-        const next = decrementStoredCount();
+        const next = Math.max(photoCount - 1, 0);
         setPhotoCount(next);
         updatePhotoCountNotification(photoLimit === null ? null : Math.max(photoLimit - next, 0), eventName);
         return true;
@@ -485,7 +511,7 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
         });
       }
     },
-    [photoLimit, eventName, showToast]
+    [photoCount, photoLimit, eventName, showToast]
   );
 
   const closeMyPhotos = useCallback(() => {
@@ -526,9 +552,8 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
     [handleDeletePhoto]
   );
 
-  const remaining =
-    photoCount === null ? effectivePhotoLimit : Math.max(effectivePhotoLimit - photoCount, 0);
-  const limitReached = photoCount !== null && remaining <= 0;
+  const remaining = Math.max(effectivePhotoLimit - photoCount, 0);
+  const limitReached = remaining <= 0;
 
   // Only meaningful when !canUpload: whether the event's day hasn't arrived
   // yet, or has already passed, so the closed message below can say which.
@@ -1012,13 +1037,12 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
 
     setIsSaving(true);
 
-    const currentRemaining =
-      photoCount === null ? effectivePhotoLimit : Math.max(effectivePhotoLimit - photoCount, 0);
+    const currentRemaining = Math.max(effectivePhotoLimit - photoCount, 0);
     const capped = toSave.slice(0, currentRemaining);
     const skippedForLimit = toSave.length - capped.length;
 
     const guestName = getStoredGuestName();
-    const startingCount = photoCount ?? 0;
+    const startingCount = photoCount;
     let runningCount = startingCount;
     let localFailures = 0;
 
@@ -1026,14 +1050,18 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
       try {
         const filename = buildFilename(item.ext);
         const thumb = await createThumbnail(item.url, 640, 0.72);
-        runningCount = incrementStoredCount();
+        runningCount += 1;
         enqueueUpload(item.blob, filename, thumb, guestName || undefined);
       } catch {
         localFailures++;
       }
     }
 
-    setPhotoCount(runningCount);
+    // Added, not set: an upload finishing meanwhile may already have brought
+    // the count in line with the server's, and that must not be overwritten
+    // with a total worked out from the count as it was before saving.
+    const added = runningCount - startingCount;
+    if (added > 0) setPhotoCount((count) => count + added);
     if (runningCount !== startingCount) {
       updatePhotoCountNotification(
         photoLimit === null ? null : Math.max(photoLimit - runningCount, 0),
@@ -1133,11 +1161,12 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
         (limitReached ? (
           <div className="bg-gray-50 px-6 py-5 text-center">
             <p className="font-medium text-foreground">
-              You&apos;ve shared {effectivePhotoLimit} photos — thank you!
+              This album is full — thank you!
             </p>
             <p className="mt-1 text-sm text-gray-500">
-              That&apos;s the limit per device for tonight. Ask a friend to
-              snap the next one!
+              {photoLimit === null
+                ? "The event has reached its photo limit."
+                : `Everyone together has shared the ${photoLimit} photos this event allows.`}
             </p>
             {myPhotos.length > 0 && (
               <button
@@ -1241,6 +1270,12 @@ export default function Camera({ eventName, photoLimit, canUpload, eventDate, up
                   className="shrink-0 text-gray-300"
                 />
               </button>
+            )}
+
+            {photoLimit !== null && (
+              <p className="bg-surface px-4 pb-3 pt-1 text-center text-xs text-gray-500">
+                {remaining} of {photoLimit} photo{photoLimit === 1 ? "" : "s"} left for this event
+              </p>
             )}
           </div>
         ))}

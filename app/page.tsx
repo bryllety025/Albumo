@@ -9,7 +9,7 @@ import AlbumCard from "./components/AlbumCard";
 import GuestNameGate from "./components/GuestNameGate";
 import HowToUse from "./components/HowToUse";
 import { getRequestEventConfig } from "@/lib/event";
-import { fetchEventAlbums, fetchEventPhotoLimit, fetchEventUploadsMode, fetchGuestAppFacebookUrl } from "@/lib/backendEvents";
+import { fetchEventAlbums, fetchEventPhotoQuota, fetchEventUploadsMode, fetchGuestAppFacebookUrl } from "@/lib/backendEvents";
 import { fetchEventTheme } from "@/lib/eventTheme";
 import { isTodayInManila } from "@/lib/manilaDate";
 
@@ -30,11 +30,11 @@ export default async function Home() {
 
   const { eventName, date, slug } = config;
   // Per-event (its photo-limit tier's own limit, or the account-wide
-  // default, and an admin's own upload-policy choice) -- fresh calls every
-  // load, not part of the long-lived event cookie. See fetchEventPhotoLimit's
-  // own comment for why.
-  const [photoLimit, uploadsMode, facebookUrl, theme, albums] = await Promise.all([
-    fetchEventPhotoLimit(slug),
+  // default, how many photos it holds so far, and an admin's own
+  // upload-policy choice) -- fresh calls every load, not part of the
+  // long-lived event cookie. See fetchEventPhotoQuota's own comment for why.
+  const [{ limit: photoLimit, used: photosUsed }, uploadsMode, facebookUrl, theme, albums] = await Promise.all([
+    fetchEventPhotoQuota(slug),
     fetchEventUploadsMode(slug),
     fetchGuestAppFacebookUrl(),
     fetchEventTheme(slug),
@@ -90,6 +90,7 @@ export default async function Home() {
         <Camera
           eventName={eventName}
           photoLimit={photoLimit}
+          photosUsed={photosUsed}
           canUpload={canUpload}
           eventDate={date}
           uploadsPaused={uploadsPaused}
@@ -107,12 +108,12 @@ export default async function Home() {
               : null
           }
         />
-        <ViewGalleryButton photoLimit={photoLimit} />
+        <ViewGalleryButton />
       </div>
 
       <RecentPhotosStrip />
 
-      <NotificationToggle eventName={eventName} photoLimit={photoLimit} />
+      <NotificationToggle eventName={eventName} photoLimit={photoLimit} photosUsed={photosUsed} />
 
       <div className="mt-4 flex shrink-0 flex-wrap items-center justify-center gap-x-5 gap-y-2">
         <HowToUse photoLimit={photoLimit} facebookUrl={facebookUrl} />

@@ -1,38 +1,4 @@
-const COUNT_KEY = "wedding-photos-count";
 const MY_PHOTOS_KEY = "wedding-photos-mine";
-
-export function getStoredCount(): number {
-  try {
-    const raw = localStorage.getItem(COUNT_KEY);
-    const parsed = raw ? parseInt(raw, 10) : 0;
-    return Number.isFinite(parsed) ? parsed : 0;
-  } catch {
-    return 0;
-  }
-}
-
-export function incrementStoredCount(): number {
-  const next = getStoredCount() + 1;
-  try {
-    localStorage.setItem(COUNT_KEY, String(next));
-  } catch {
-    // Storage unavailable (e.g. Safari private mode) — count still works
-    // for the rest of this page load, it just won't persist across reloads.
-  }
-  return next;
-}
-
-// Frees up a slot reserved by incrementStoredCount for an upload that was
-// later abandoned (e.g. the guest gave up retrying a failed background upload).
-export function decrementStoredCount(): number {
-  const next = Math.max(getStoredCount() - 1, 0);
-  try {
-    localStorage.setItem(COUNT_KEY, String(next));
-  } catch {
-    // See incrementStoredCount — safe to ignore.
-  }
-  return next;
-}
 
 // One entry per photo this device has successfully uploaded, so the guest
 // can look back at what they've shared and delete one if they want to

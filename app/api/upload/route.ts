@@ -69,12 +69,20 @@ export async function POST(req: NextRequest) {
           { status: 403 }
         );
       }
+      if (registered.reason === "photo_limit_reached") {
+        return NextResponse.json(
+          { error: "This event has reached its photo limit.", code: "photo_limit_reached" },
+          { status: 409 }
+        );
+      }
       return NextResponse.json(
         { error: "This event has reached its guest limit.", code: "guest_limit_reached" },
         { status: 409 }
       );
     }
-    return NextResponse.json({ fileId });
+    // `photoCount` is how many photos the whole event holds now, which is
+    // what its limit is measured against -- the camera shows it back.
+    return NextResponse.json({ fileId, photoCount: registered.photoCount });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Upload to S3 failed" }, { status: 500 });

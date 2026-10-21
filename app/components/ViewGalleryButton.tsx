@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { LayoutGrid, ChevronRight } from "lucide-react";
 import { usePhotos } from "@/lib/usePhotos";
-import { getStoredCount } from "@/lib/photoStorage";
 import type { PhotoFile } from "@/lib/s3";
 
 const ROTATE_INTERVAL_MS = 5000;
@@ -21,7 +20,7 @@ type Slots = {
   front: 0 | 1;
 };
 
-export default function ViewGalleryButton({ photoLimit }: { photoLimit: number | null }) {
+export default function ViewGalleryButton() {
   const files = usePhotos();
   const count = files ? files.length : null;
 
@@ -32,11 +31,6 @@ export default function ViewGalleryButton({ photoLimit }: { photoLimit: number |
   const currentIndexRef = useRef(0);
 
   const [slots, setSlots] = useState<Slots>({ photos: [null, null], front: 0 });
-
-  const [yourCount, setYourCount] = useState<number | null>(null);
-  useEffect(() => {
-    setYourCount(getStoredCount());
-  }, []);
 
   useEffect(() => {
     if (!files || files.length === 0 || slots.photos[slots.front]) return;
@@ -121,13 +115,6 @@ export default function ViewGalleryButton({ photoLimit }: { photoLimit: number |
           <span className="block text-sm text-white/80">
             {count} photo{count === 1 ? "" : "s"} shared so far
           </span>
-          {yourCount !== null && (
-            <span className="block text-xs text-white/60">
-              {photoLimit === null
-                ? `You've uploaded ${yourCount}`
-                : `You've uploaded ${Math.min(yourCount, photoLimit)} of ${photoLimit}`}
-            </span>
-          )}
         </span>
         <ChevronRight size={20} strokeWidth={1.75} className="shrink-0 text-white/70" />
       </div>

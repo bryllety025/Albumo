@@ -32,40 +32,47 @@ export async function verifyEventSlug(slug: string): Promise<VerifiedEvent | nul
   }
 }
 
-// The max photos/videos a single device may upload to this event: either the
-// event's own photo-limit tier's limit, or (no such tier -- the usual case
-// before tiers existed, or while the account has none) the account-wide
-// default. Falls back to this constant -- never throws -- so albumo-backend
-// being unreachable degrades to the old fixed behaviour instead of breaking
-// the camera.
-const FALLBACK_PHOTO_LIMIT = 20;
+/**
+ * How full an event's album is: `limit` is the most photos/videos the whole
+ * event may hold from its guests (across every device), `used` how many it
+ * holds right now. A null `limit` means the event has no cap.
+ */
+export type PhotoQuota = { limit: number | null; used: number };
 
-// Deliberately a fresh call per page load (re-read at most once a minute),
-// not baked into the `albumo_event` cookie alongside slug/eventName/date:
-// that cookie is set once, at proxy-time, and kept for up to a year, so a
-// value this likely to change (an admin edits the tier, or the event's tier
-// itself) would go stale for the cookie's whole lifetime if stored there.
+// The event's own photo-limit tier's limit, or (no such tier -- the usual
+// case before tiers existed, or while the account has none) the account-wide
+// default, plus how many photos the event holds right now. albumo-backend
+// enforces the limit when an upload is registered; this is what lets the
+// camera show it, and stop offering to take a photo that would only be
+// refused.
 //
-// Returns null for "unlimited" (the tier, or the account-wide default, has
-// no cap) -- a deliberate, meaningful value, unlike the FALLBACK_PHOTO_LIMIT
-// degrade below, which only ever means "couldn't tell, assume the old fixed
-// default" (an unreachable backend or a malformed response).
-export async function fetchEventPhotoLimit(slug: string): Promise<number | null> {
+// Fully live (`no-store`), unlike what used to be a once-a-minute read of
+// the limit alone: `used` moves with every guest's upload, and an admin
+// editing the limit should show on the next open too. Not baked into the
+// `albumo_event` cookie either -- that is set once, at proxy-time, and kept
+// for up to a year.
+//
+// Never throws. When albumo-backend can't be reached or answers with
+// something unreadable, the answer is "no cap, nothing used yet": the
+// limit is enforced server-side regardless, so the worst case is a guest
+// being told it's full only when an upload is actually refused -- far better
+// than a phantom cap that locks the camera for an event that isn't full.
+export async function fetchEventPhotoQuota(slug: string): Promise<PhotoQuota> {
+  const unknown: PhotoQuota = { limit: null, used: 0 };
   try {
     const res = await fetch(`${EVENTS_API_URL}/events/public/${encodeURIComponent(slug)}`, {
       headers: { "x-api-key": process.env.EVENTS_API_KEY ?? "" },
-      next: { revalidate: 60 },
+      cache: "no-store",
     });
-    if (!res.ok) return FALLBACK_PHOTO_LIMIT;
+    if (!res.ok) return unknown;
 
-    const data = (await res.json()) as { photoLimitPerDevice: number | null };
-    if (data.photoLimitPerDevice === null) return null;
-    return Number.isInteger(data.photoLimitPerDevice) && data.photoLimitPerDevice > 0
-      ? data.photoLimitPerDevice
-      : FALLBACK_PHOTO_LIMIT;
+    const data = (await res.json()) as { photoLimit?: number | null; photoCount?: number };
+    const limit = Number.isInteger(data.photoLimit) && (data.photoLimit as number) > 0 ? (data.photoLimit as number) : null;
+    const used = Number.isInteger(data.photoCount) && (data.photoCount as number) >= 0 ? (data.photoCount as number) : 0;
+    return { limit, used };
   } catch (err) {
     console.error("Failed to read the photo limit from albumo-backend:", err);
-    return FALLBACK_PHOTO_LIMIT;
+    return unknown;
   }
 }
 
@@ -76,7 +83,7 @@ export async function fetchEventPhotoLimit(slug: string): Promise<number | null>
  */
 export type UploadsMode = "automatic" | "disabled" | "always_open";
 
-// Not cookie-baked (same reasoning as fetchEventPhotoLimit above) and,
+// Not cookie-baked (same reasoning as fetchEventPhotoQuota above) and,
 // unlike that one, not even revalidate-cached -- an admin's pause/resume
 // decision needs to show up the moment a guest next opens the app, not up to
 // a minute late, so this is a fully live `no-store` read on every open. Fails
@@ -156,20 +163,24 @@ export async function fetchGuestAppFacebookUrl(): Promise<string | null> {
 }
 
 export type RegisterUploadResult =
-  | { ok: true }
+  /** `photoCount` is how many photos the event holds now, this one included -- null if albumo-backend didn't say. */
+  | { ok: true; photoCount: number | null }
   | { ok: false; reason: "guest_limit_reached" }
+  | { ok: false; reason: "photo_limit_reached" }
   | { ok: false; reason: "uploads_disabled" };
 
 // Tells albumo-backend who uploaded a file, so the event owner can see it in
 // their dashboard, and records this device's uploaderToken against it so it
 // can later prove ownership to delete it (see deleteGuestUpload below).
-// Best-effort for every failure except one: a 409 means the event has a
-// guest-limit tier and this is a brand-new device arriving after it was
-// already reached, which albumo-backend has already undone (it deletes the S3 object
-// it would otherwise orphan) -- that specific case must reach the caller so
-// the guest can be told, rather than being silently swallowed like a
-// transient network blip would be (where undoing an upload that's already in
-// S3 would be the wrong call).
+// Best-effort for every failure except the ones that mean the upload was
+// refused: a 409 means either the event has a guest-limit tier and this is a
+// brand-new device arriving after it was already reached, or the event
+// already holds as many photos as its photo limit allows (told apart by the
+// body's `code`). albumo-backend has already undone the upload in both cases
+// (it deletes the S3 object it would otherwise orphan) -- they must reach the
+// caller so the guest can be told, rather than being silently swallowed like
+// a transient network blip would be (where undoing an upload that's already
+// in S3 would be the wrong call).
 export async function registerUpload(
   slug: string,
   name: string,
@@ -191,18 +202,22 @@ export async function registerUpload(
       cache: "no-store",
     });
     if (res.status === 409) {
-      return { ok: false, reason: "guest_limit_reached" };
+      const body = (await res.json().catch(() => null)) as { code?: string } | null;
+      return { ok: false, reason: body?.code === "photo_limit_reached" ? "photo_limit_reached" : "guest_limit_reached" };
     }
     if (res.status === 403) {
       return { ok: false, reason: "uploads_disabled" };
     }
     if (!res.ok) {
       console.error(`Failed to register uploader name with albumo-backend: ${res.status}`);
+      return { ok: true, photoCount: null };
     }
-    return { ok: true };
+    const body = (await res.json().catch(() => null)) as { photoCount?: number } | null;
+    const photoCount = Number.isInteger(body?.photoCount) ? (body?.photoCount as number) : null;
+    return { ok: true, photoCount };
   } catch (err) {
     console.error("Failed to register uploader name with albumo-backend:", err);
-    return { ok: true };
+    return { ok: true, photoCount: null };
   }
 }
 
