@@ -77,9 +77,10 @@ export async function fetchEventPhotoQuota(slug: string): Promise<PhotoQuota> {
 }
 
 /**
- * An admin's upload policy for an event. `automatic` (the default) restricts
- * uploads to the event's own day; `disabled` blocks them outright no matter
- * the date; `always_open` allows them no matter the date.
+ * An admin's upload policy for an event. `automatic` (the default) follows
+ * the event's date -- camera and camera roll on its own day, camera roll only
+ * for a few days after (see lib/manilaDate.ts); `disabled` blocks uploads
+ * outright no matter the date; `always_open` allows them no matter the date.
  */
 export type UploadsMode = "automatic" | "disabled" | "always_open";
 

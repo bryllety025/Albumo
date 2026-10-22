@@ -30,7 +30,7 @@ import {
 import { getStoredGuestName } from "@/lib/guestName";
 import { updatePhotoCountNotification } from "@/lib/notifications";
 import { getOrCreateUploaderToken } from "@/lib/uploaderToken";
-import { todayInManila } from "@/lib/manilaDate";
+import { LATE_UPLOAD_DAYS, lastUploadDay, todayInManila } from "@/lib/manilaDate";
 import { pageHeadingFont } from "@/lib/pageFont";
 import { applyPhotoStamp, formatStampDate, type StampSettings } from "@/lib/photoStamp";
 import { TooltipLabel } from "./tooltip-label";
@@ -270,8 +270,13 @@ type Props = {
   photoLimit: number | null;
   /** How many photos the whole event held when this page loaded -- what `photoLimit` is measured against. */
   photosUsed: number;
-  /** Whether today is the event's own day AND an admin hasn't paused uploads -- both must hold to take or upload a photo. */
+  /** Whether guests may add photos at all right now: the event's own day or the few days after it, and an admin hasn't paused uploads. */
   canUpload: boolean;
+  /**
+   * Whether the camera is open too: only on the event's own day (or when an admin keeps the event always open).
+   * When `canUpload` is true but this is not, guests can still add photos from their camera roll.
+   */
+  canTakePhoto: boolean;
   /** The event's date, "YYYY-MM-DD", shown in the closed message when `canUpload` is false. */
   eventDate: string;
   /** Whether an admin has manually paused uploads for this event, independent of the date. Takes priority over the date-based closed message when true. */
@@ -293,7 +298,16 @@ function formatEventDate(date: string): string {
   });
 }
 
-export default function Camera({ eventName, photoLimit, photosUsed, canUpload, eventDate, uploadsPaused, stamp }: Props) {
+export default function Camera({
+  eventName,
+  photoLimit,
+  photosUsed,
+  canUpload,
+  canTakePhoto,
+  eventDate,
+  uploadsPaused,
+  stamp,
+}: Props) {
   // Internal math treats "no limit" as Infinity throughout this component --
   // safe for all the arithmetic/array-length logic below (unlike `null`,
   // which would silently break it, e.g. Array.prototype.slice(0, null)
@@ -415,7 +429,8 @@ export default function Camera({ eventName, photoLimit, photosUsed, canUpload, e
             }
 
             // Permanently blocked for this event (its guest limit has been
-            // reached, or an admin has paused uploads) -- never retryable,
+            // reached, the upload window has closed, or an admin has paused
+            // uploads) -- never retryable,
             // unlike every other failure below, so the job is dropped
             // outright instead of left as a retryable "error", and the limit
             // slot it had optimistically reserved is freed, the same as
@@ -424,9 +439,11 @@ export default function Camera({ eventName, photoLimit, photosUsed, canUpload, e
             syncQueue();
             setPhotoCount((count) => Math.max(count - 1, 0));
             showToast(
-              res.status === 403
-                ? "Uploads are currently paused for this event. New photos can't be added right now."
-                : "This event has reached its guest limit. New photos can't be added from this device.",
+              body?.code === "uploads_closed"
+                ? "Photo sharing for this event has closed, so that photo wasn't shared."
+                : res.status === 403
+                  ? "Uploads are currently paused for this event. New photos can't be added right now."
+                  : "This event has reached its guest limit. New photos can't be added from this device.",
             );
             continue;
           }
@@ -663,7 +680,7 @@ export default function Camera({ eventName, photoLimit, photosUsed, canUpload, e
   // failure we fall back to calling getUserMedia directly — it proceeds
   // silently when already allowed and shows the native prompt otherwise.
   const handleTakePhoto = useCallback(async () => {
-    if (!canUpload) return;
+    if (!canUpload || !canTakePhoto) return;
     setError(null);
     setPermissionDenied(false);
     let state: PermissionState | "unsupported" = "unsupported";
@@ -688,7 +705,7 @@ export default function Camera({ eventName, photoLimit, photosUsed, canUpload, e
     } else {
       setStage("prompt");
     }
-  }, [canUpload, openLive]);
+  }, [canUpload, canTakePhoto, openLive]);
 
   // The <video> element only exists in the DOM once `stage` becomes "live",
   // so the stream can only be attached after that render commits.
@@ -1190,7 +1207,7 @@ export default function Camera({ eventName, photoLimit, photosUsed, canUpload, e
               {uploadsPaused
                 ? "The event host has paused new photos for now. Please check back later."
                 : eventHasPassed
-                  ? `This album was only open for new photos on the day of the event, ${formatEventDate(eventDate)}.`
+                  ? `New photos could be added until ${formatEventDate(lastUploadDay(eventDate))}, ${LATE_UPLOAD_DAYS} days after the event.`
                   : `You can take or add photos starting ${formatEventDate(eventDate)}.`}
             </p>
             {myPhotos.length > 0 && (
@@ -1204,47 +1221,69 @@ export default function Camera({ eventName, photoLimit, photosUsed, canUpload, e
           </div>
         ) : (
           <div className="flex flex-col">
-            <button
-              onClick={handleTakePhoto}
-              className="flex items-center gap-3 bg-navy-900 px-4 py-4 text-left transition-colors hover:bg-navy-900/90"
-            >
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-navy-800">
-                <CameraIcon size={22} strokeWidth={1.75} className="text-white" />
-              </span>
-              <span className="flex-1">
-                <span className="block text-base font-semibold text-white">
-                  Take Photo
+            {/* After the event's own day the camera is closed (a photo taken then wasn't taken at the event), but
+                photos from the camera roll are still welcome for a few more days. */}
+            {canTakePhoto ? (
+              <button
+                onClick={handleTakePhoto}
+                className="flex items-center gap-3 bg-navy-900 px-4 py-4 text-left transition-colors hover:bg-navy-900/90"
+              >
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-navy-800">
+                  <CameraIcon size={22} strokeWidth={1.75} className="text-white" />
                 </span>
-                <span className="block text-sm text-white/60">
-                  Open camera and capture the moment
+                <span className="flex-1">
+                  <span className="block text-base font-semibold text-white">
+                    Take Photo
+                  </span>
+                  <span className="block text-sm text-white/60">
+                    Open camera and capture the moment
+                  </span>
                 </span>
-              </span>
-              <ChevronRight
-                size={20}
-                strokeWidth={1.75}
-                className="shrink-0 text-white/50"
-              />
-            </button>
+                <ChevronRight
+                  size={20}
+                  strokeWidth={1.75}
+                  className="shrink-0 text-white/50"
+                />
+              </button>
+            ) : (
+              <div className="bg-surface px-6 py-5 text-center">
+                <p className="font-medium text-foreground">The camera is closed</p>
+                <p className="mt-1 text-sm text-gray-500">
+                  The event is over, but you can still add photos from your camera roll until{" "}
+                  {formatEventDate(lastUploadDay(eventDate))}.
+                </p>
+              </div>
+            )}
 
             <button
               onClick={openLibrary}
-              className="flex items-center gap-3 bg-surface px-4 py-4 text-left transition-colors hover:bg-gray-50"
+              className={`flex items-center gap-3 px-4 py-4 text-left transition-colors ${
+                canTakePhoto ? "bg-surface hover:bg-gray-50" : "bg-navy-900 hover:bg-navy-900/90"
+              }`}
             >
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-100">
-                <ImageIcon size={22} strokeWidth={1.75} className="text-blue-600" />
+              <span
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                  canTakePhoto ? "bg-blue-100" : "bg-navy-800"
+                }`}
+              >
+                <ImageIcon
+                  size={22}
+                  strokeWidth={1.75}
+                  className={canTakePhoto ? "text-blue-600" : "text-white"}
+                />
               </span>
               <span className="flex-1">
-                <span className="block text-base font-semibold text-foreground">
+                <span className={`block text-base font-semibold ${canTakePhoto ? "text-foreground" : "text-white"}`}>
                   Choose Photo
                 </span>
-                <span className="block text-sm text-gray-500">
+                <span className={`block text-sm ${canTakePhoto ? "text-gray-500" : "text-white/60"}`}>
                   Upload from your camera roll
                 </span>
               </span>
               <ChevronRight
                 size={20}
                 strokeWidth={1.75}
-                className="shrink-0 text-gray-300"
+                className={`shrink-0 ${canTakePhoto ? "text-gray-300" : "text-white/50"}`}
               />
             </button>
 

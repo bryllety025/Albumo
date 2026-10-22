@@ -32,28 +32,38 @@ function FacebookMark({ className }: { className?: string }) {
 
 // Every step but the last, which is the Facebook ask and is laid out by hand
 // below. Only describes what the app really does.
-function buildSteps(photoLimit: number | null): Step[] {
+function buildSteps(photoLimit: number | null, canTakePhoto: boolean): Step[] {
   return [
     {
       icon: Camera,
       title: "Add your photos",
-      body: (
+      body: canTakePhoto ? (
         <>
           Tap <Em>Take Photo</Em> to open your camera, or <Em>Choose Photo</Em> to pick pictures from your camera
           roll. Everything you add joins the shared album right away.
         </>
-      ),
-    },
-    {
-      icon: SlidersHorizontal,
-      title: "Shoot your way",
-      body: (
+      ) : (
         <>
-          Along the top of the camera you can switch cameras and turn on flash, HDR or burst mode. Filters, the
-          timer and zoom are along the bottom. Tap the big circle to shoot.
+          The camera is only open on the day of the event, but you can still tap <Em>Choose Photo</Em> to pick
+          pictures from your camera roll. Everything you add joins the shared album right away.
         </>
       ),
     },
+    // The camera's own controls are only worth explaining while the camera is there.
+    ...(canTakePhoto
+      ? [
+          {
+            icon: SlidersHorizontal,
+            title: "Shoot your way",
+            body: (
+              <>
+                Along the top of the camera you can switch cameras and turn on flash, HDR or burst mode. Filters,
+                the timer and zoom are along the bottom. Tap the big circle to shoot.
+              </>
+            ),
+          },
+        ]
+      : []),
     {
       icon: UploadCloud,
       title: "Save to share",
@@ -83,13 +93,15 @@ type Props = {
   photoLimit: number | null;
   /** The admin's Facebook link; without one the walkthrough ends on a plain "all set" step. */
   facebookUrl: string | null;
+  /** Whether the camera is open; after the event's own day only the camera roll is, and the walkthrough says so. */
+  canTakePhoto: boolean;
 };
 
 // A short walkthrough that opens by itself the first time a guest opens the
 // app on a device (once the name prompt has been dealt with, so the two never
 // stack) and ends by asking them to follow Albumo on Facebook. The link it
 // renders lets anyone replay it later.
-export default function HowToUse({ photoLimit, facebookUrl }: Props) {
+export default function HowToUse({ photoLimit, facebookUrl, canTakePhoto }: Props) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
   const titleId = useId();
@@ -144,7 +156,7 @@ export default function HowToUse({ photoLimit, facebookUrl }: Props) {
     setOpen(true);
   }
 
-  const steps = buildSteps(photoLimit);
+  const steps = buildSteps(photoLimit, canTakePhoto);
   const followUrl = facebookUrl ? facebookFollowUrl(facebookUrl) : null;
   const total = steps.length + 1;
   const isLast = step === total - 1;

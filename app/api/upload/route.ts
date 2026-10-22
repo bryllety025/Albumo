@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { uploadPhoto } from "@/lib/s3";
 import { getEventConfigFromRequest } from "@/lib/event";
 import { fetchEventUploadsMode, registerUpload } from "@/lib/backendEvents";
-import { isTodayInManila } from "@/lib/manilaDate";
+import { uploadWindow } from "@/lib/manilaDate";
 
 export async function POST(req: NextRequest) {
   const config = getEventConfigFromRequest(req);
@@ -28,11 +28,22 @@ export async function POST(req: NextRequest) {
       { status: 403 }
     );
   }
-  if (uploadsMode === "automatic" && !isTodayInManila(config.date)) {
-    return NextResponse.json(
-      { error: "Photos can only be shared on the day of the event." },
-      { status: 403 }
-    );
+  // The event's own day plus a few after it. The camera is only offered on the day itself, but a file
+  // arriving here can't be told apart by where it came from, so the whole window is open to uploads.
+  if (uploadsMode === "automatic") {
+    const phase = uploadWindow(config.date);
+    if (phase !== "event_day" && phase !== "after_event") {
+      return NextResponse.json(
+        {
+          error:
+            phase === "upcoming"
+              ? "Photo sharing isn't open yet for this event."
+              : "Photo sharing has ended for this event.",
+          code: "uploads_closed",
+        },
+        { status: 403 }
+      );
+    }
   }
 
   const formData = await req.formData();

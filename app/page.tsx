@@ -11,7 +11,7 @@ import HowToUse from "./components/HowToUse";
 import { getRequestEventConfig } from "@/lib/event";
 import { fetchEventAlbums, fetchEventPhotoQuota, fetchEventUploadsMode, fetchGuestAppFacebookUrl } from "@/lib/backendEvents";
 import { fetchEventTheme } from "@/lib/eventTheme";
-import { isTodayInManila } from "@/lib/manilaDate";
+import { uploadWindow } from "@/lib/manilaDate";
 
 export default async function Home() {
   const config = await getRequestEventConfig();
@@ -41,9 +41,12 @@ export default async function Home() {
     fetchEventAlbums(slug),
   ]);
   // `disabled`/`always_open` are an admin override in either direction;
-  // `automatic` (the default) falls back to the original design -- guests
-  // may only upload on the event's own day.
-  const canUpload = uploadsMode === "disabled" ? false : uploadsMode === "always_open" ? true : isTodayInManila(date);
+  // `automatic` (the default) follows the event's date: the camera and the
+  // camera roll on the event's own day, then only the camera roll for a few
+  // days after it (a photo taken then wasn't taken at the event).
+  const phase = uploadsMode === "disabled" ? "closed" : uploadsMode === "always_open" ? "event_day" : uploadWindow(date);
+  const canTakePhoto = phase === "event_day";
+  const canUpload = phase === "event_day" || phase === "after_event";
   const uploadsPaused = uploadsMode === "disabled";
 
   return (
@@ -92,6 +95,7 @@ export default async function Home() {
           photoLimit={photoLimit}
           photosUsed={photosUsed}
           canUpload={canUpload}
+          canTakePhoto={canTakePhoto}
           eventDate={date}
           uploadsPaused={uploadsPaused}
           stamp={
@@ -116,7 +120,7 @@ export default async function Home() {
       <NotificationToggle eventName={eventName} photoLimit={photoLimit} photosUsed={photosUsed} />
 
       <div className="mt-4 flex shrink-0 flex-wrap items-center justify-center gap-x-5 gap-y-2">
-        <HowToUse photoLimit={photoLimit} facebookUrl={facebookUrl} />
+        <HowToUse photoLimit={photoLimit} facebookUrl={facebookUrl} canTakePhoto={canTakePhoto} />
         {facebookUrl && (
           <a
             href={facebookUrl}
