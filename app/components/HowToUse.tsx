@@ -262,13 +262,15 @@ export default function HowToUse({ photoLimit, facebookUrl, canTakePhoto }: Prop
             </p>
 
             <div className="mt-5 flex gap-3">
-              <button
-                type="button"
-                onClick={step === 0 ? close : () => setStep(step - 1)}
-                className="flex-1 rounded-full border border-gray-200 px-4 py-3 font-medium text-gray-600"
-              >
-                {step === 0 ? "Skip" : "Back"}
-              </button>
+              {step > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setStep(step - 1)}
+                  className="flex-1 rounded-full border border-gray-200 px-4 py-3 font-medium text-gray-600"
+                >
+                  Back
+                </button>
+              )}
               <button
                 ref={primaryRef}
                 type="button"
