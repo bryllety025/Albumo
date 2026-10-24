@@ -103,6 +103,7 @@ type PreviewItem = {
 const BURST_COUNT = 5;
 const BURST_INTERVAL_MS = 250;
 const FLASH_DURATION_MS = 200;
+const SHUTTER_BLINK_MS = 140;
 // Give auto-exposure a moment to react to the torch before capturing, otherwise
 // the shot is taken before the light actually registers.
 const TORCH_WARMUP_MS = 350;
@@ -325,6 +326,10 @@ export default function Camera({
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashHoldTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const torchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shutterTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // True from the shutter press until that photo has been handed to the upload queue, so a second tap
+  // meanwhile can't start a second capture on the shared canvas. A ref, not state: nothing on screen changes.
+  const shotBusyRef = useRef(false);
 
   const [stage, setStage] = useState<Stage>("idle");
   const [source, setSource] = useState<Source>(null);
@@ -341,6 +346,9 @@ export default function Camera({
   const [countdownValue, setCountdownValue] = useState<number | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [flashActive, setFlashActive] = useState(false);
+  // A quick dark blink the moment a photo is taken: with no review screen after it, this is how the
+  // guest sees that the shutter fired.
+  const [shutterActive, setShutterActive] = useState(false);
   const [previewItems, setPreviewItems] = useState<PreviewItem[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   // How many photos the whole event holds, as far as this page knows: what
@@ -605,6 +613,7 @@ export default function Camera({
       if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
       if (flashHoldTimeoutRef.current) clearTimeout(flashHoldTimeoutRef.current);
       if (torchTimeoutRef.current) clearTimeout(torchTimeoutRef.current);
+      if (shutterTimeoutRef.current) clearTimeout(shutterTimeoutRef.current);
     };
   }, []);
 
@@ -723,9 +732,11 @@ export default function Camera({
     if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
     if (flashHoldTimeoutRef.current) clearTimeout(flashHoldTimeoutRef.current);
     if (torchTimeoutRef.current) clearTimeout(torchTimeoutRef.current);
+    if (shutterTimeoutRef.current) clearTimeout(shutterTimeoutRef.current);
     setCountdownValue(null);
     setIsCapturing(false);
     setFlashActive(false);
+    setShutterActive(false);
     // Best-effort torch-off; stopping the track extinguishes it regardless, so
     // don't gate teardown on the constraint call resolving.
     void setTorch(false);
@@ -859,42 +870,131 @@ export default function Camera({
   // camera (and any device without torch support) falls back to a screen flash.
   const useTorch = flashOn && facingMode === "environment" && torchSupported;
 
+  // Saving only does local bookkeeping (thumbnail + limit count) up front —
+  // the actual network upload is queued to run in the background (see the
+  // upload-queue effect above) so the guest isn't stuck waiting on a slow
+  // connection and can go straight back to shooting. Says what became of the
+  // photos: `photoCountAfter` is the event's count with them in it.
+  const saveItems = useCallback(
+    async (toSave: PreviewItem[]) => {
+      const currentRemaining = Math.max(effectivePhotoLimit - photoCount, 0);
+      const capped = toSave.slice(0, currentRemaining);
+      const skippedForLimit = toSave.length - capped.length;
+
+      const guestName = getStoredGuestName();
+      const startingCount = photoCount;
+      let runningCount = startingCount;
+      let localFailures = 0;
+
+      for (const item of capped) {
+        try {
+          const filename = buildFilename(item.ext);
+          const thumb = await createThumbnail(item.url, 640, 0.72);
+          runningCount += 1;
+          enqueueUpload(item.blob, filename, thumb, guestName || undefined);
+        } catch {
+          localFailures++;
+        }
+      }
+
+      // Added, not set: an upload finishing meanwhile may already have brought
+      // the count in line with the server's, and that must not be overwritten
+      // with a total worked out from the count as it was before saving.
+      const added = runningCount - startingCount;
+      if (added > 0) setPhotoCount((count) => count + added);
+      if (runningCount !== startingCount) {
+        updatePhotoCountNotification(
+          photoLimit === null ? null : Math.max(photoLimit - runningCount, 0),
+          eventName
+        );
+      }
+
+      const messages: string[] = [];
+      if (localFailures > 0) {
+        messages.push(
+          `${localFailures} photo${localFailures === 1 ? "" : "s"} couldn't be processed.`
+        );
+      }
+      if (skippedForLimit > 0) {
+        messages.push(
+          `${skippedForLimit} photo${skippedForLimit === 1 ? "" : "s"} skipped — limit reached.`
+        );
+      }
+      if (messages.length > 0) showToast(messages.join(" "));
+
+      return {
+        photoCountAfter: runningCount,
+        anySucceeded: runningCount !== startingCount,
+        allSkippedForLimit: capped.length === 0 && toSave.length > 0,
+      };
+    },
+    [photoCount, eventName, photoLimit, effectivePhotoLimit, enqueueUpload, showToast]
+  );
+
+  const blinkShutter = useCallback(() => {
+    setShutterActive(true);
+    if (shutterTimeoutRef.current) clearTimeout(shutterTimeoutRef.current);
+    shutterTimeoutRef.current = setTimeout(() => setShutterActive(false), SHUTTER_BLINK_MS);
+  }, []);
+
+  // A photo taken with the camera is shared the moment it is taken, with no review step: it goes
+  // into the upload queue and the camera stays open for the next one -- unless that was the last
+  // photo the event has room for, when there is nothing more to take.
+  const saveShot = useCallback(
+    async (item: PreviewItem) => {
+      try {
+        const { photoCountAfter } = await saveItems([item]);
+        if (photoCountAfter >= effectivePhotoLimit && !cancelledRef.current) closeLive();
+      } finally {
+        URL.revokeObjectURL(item.url);
+      }
+    },
+    [saveItems, effectivePhotoLimit, closeLive]
+  );
+
   const runSingleCapture = useCallback(async () => {
-    if (useTorch) {
-      await setTorch(true);
-      await waitForTorchWarmup();
-      if (cancelledRef.current) {
+    if (shotBusyRef.current) return;
+    shotBusyRef.current = true;
+    try {
+      if (useTorch) {
+        await setTorch(true);
+        await waitForTorchWarmup();
+        if (cancelledRef.current) {
+          await setTorch(false);
+          return;
+        }
+        const item = await captureFrame();
         await setTorch(false);
+        if (cancelledRef.current || !item) return;
+        blinkShutter();
+        await saveShot(item);
         return;
       }
-      const item = await captureFrame();
-      await setTorch(false);
-      if (cancelledRef.current || !item) return;
-      stopStream();
-      setPreviewItems([item]);
-      setStage("preview");
-      return;
-    }
 
-    fireFlash();
-    await waitForPaint();
-    if (cancelledRef.current) return;
-    const item = await captureFrame();
-    if (cancelledRef.current || !item) return;
-    await waitOutFlash();
-    if (cancelledRef.current) return;
-    stopStream();
-    setPreviewItems([item]);
-    setStage("preview");
+      fireFlash();
+      await waitForPaint();
+      if (cancelledRef.current) return;
+      const item = await captureFrame();
+      if (cancelledRef.current || !item) return;
+      // The screen flash is its own signal that the shot fired; a blink after it would be a second one.
+      if (!flashOn) blinkShutter();
+      await waitOutFlash();
+      if (cancelledRef.current) return;
+      await saveShot(item);
+    } finally {
+      shotBusyRef.current = false;
+    }
   }, [
     useTorch,
+    flashOn,
     setTorch,
     waitForTorchWarmup,
     fireFlash,
     waitForPaint,
     captureFrame,
     waitOutFlash,
-    stopStream,
+    blinkShutter,
+    saveShot,
   ]);
 
   const runBurstCapture = useCallback(async () => {
@@ -993,7 +1093,7 @@ export default function Camera({
   );
 
   const handleCaptureButton = useCallback(() => {
-    if (isCapturing) return;
+    if (isCapturing || shotBusyRef.current) return;
     if (countdownValue !== null) {
       cancelCountdown();
       return;
@@ -1044,87 +1144,26 @@ export default function Camera({
     openLive("environment", { resetSettings: true });
   }, [openLive]);
 
-  // Saving only does local bookkeeping (thumbnail + limit count) up front —
-  // the actual network upload is queued to run in the background (see the
-  // upload-queue effect above) so the guest isn't stuck waiting on a slow
-  // connection and can go straight back to shooting.
+  // The review step that burst photos and photos picked from the library still have: the guest keeps
+  // the ones they want, and the rest are dropped.
   const handleSave = useCallback(async () => {
     const toSave = previewItems.filter((item) => item.selected);
     if (toSave.length === 0) return;
 
     setIsSaving(true);
-
-    const currentRemaining = Math.max(effectivePhotoLimit - photoCount, 0);
-    const capped = toSave.slice(0, currentRemaining);
-    const skippedForLimit = toSave.length - capped.length;
-
-    const guestName = getStoredGuestName();
-    const startingCount = photoCount;
-    let runningCount = startingCount;
-    let localFailures = 0;
-
-    for (const item of capped) {
-      try {
-        const filename = buildFilename(item.ext);
-        const thumb = await createThumbnail(item.url, 640, 0.72);
-        runningCount += 1;
-        enqueueUpload(item.blob, filename, thumb, guestName || undefined);
-      } catch {
-        localFailures++;
-      }
-    }
-
-    // Added, not set: an upload finishing meanwhile may already have brought
-    // the count in line with the server's, and that must not be overwritten
-    // with a total worked out from the count as it was before saving.
-    const added = runningCount - startingCount;
-    if (added > 0) setPhotoCount((count) => count + added);
-    if (runningCount !== startingCount) {
-      updatePhotoCountNotification(
-        photoLimit === null ? null : Math.max(photoLimit - runningCount, 0),
-        eventName
-      );
-    }
-
-    const messages: string[] = [];
-    if (localFailures > 0) {
-      messages.push(
-        `${localFailures} photo${localFailures === 1 ? "" : "s"} couldn't be processed.`
-      );
-    }
-    if (skippedForLimit > 0) {
-      messages.push(
-        `${skippedForLimit} photo${skippedForLimit === 1 ? "" : "s"} skipped — limit reached.`
-      );
-    }
-    if (messages.length > 0) showToast(messages.join(" "));
-
-    const anySucceeded = runningCount !== startingCount;
-    const allSkippedForLimit = capped.length === 0 && toSave.length > 0;
-
+    const { photoCountAfter, anySucceeded, allSkippedForLimit } = await saveItems(toSave);
     setIsSaving(false);
 
     if (anySucceeded || allSkippedForLimit) {
       resetPreview();
-      if (source === "camera" && runningCount < effectivePhotoLimit) {
+      if (source === "camera" && photoCountAfter < effectivePhotoLimit) {
         openLive();
       } else {
         setStage("idle");
         setSource(null);
       }
     }
-  }, [
-    previewItems,
-    photoCount,
-    eventName,
-    photoLimit,
-    effectivePhotoLimit,
-    source,
-    enqueueUpload,
-    showToast,
-    resetPreview,
-    openLive,
-  ]);
+  }, [previewItems, saveItems, effectivePhotoLimit, source, resetPreview, openLive]);
 
   if (error) {
     return (
@@ -1493,6 +1532,15 @@ export default function Camera({
               flashActive ? "opacity-90" : "opacity-0"
             }`}
           />
+          <div
+            aria-hidden
+            className={`pointer-events-none absolute inset-0 z-20 bg-black transition-opacity duration-100 motion-reduce:transition-none ${
+              shutterActive ? "opacity-70" : "opacity-0"
+            }`}
+          />
+          <p role="status" className="sr-only">
+            {shutterActive ? "Photo taken and shared" : ""}
+          </p>
         </div>
       )}
 

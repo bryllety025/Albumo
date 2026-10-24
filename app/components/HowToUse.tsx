@@ -66,11 +66,18 @@ function buildSteps(photoLimit: number | null, canTakePhoto: boolean): Step[] {
       : []),
     {
       icon: UploadCloud,
-      title: "Save to share",
-      body: (
+      title: canTakePhoto ? "Shared as you shoot" : "Save to share",
+      body: canTakePhoto ? (
         <>
-          Check your photo, then tap <Em>Save</Em>, or <Em>Try again</Em> for a new one. Photos upload in the
-          background, so you can keep shooting.
+          Photos you take are shared the moment you shoot, with nothing more to tap. They upload in the
+          background, so you can keep shooting. For burst shots or pictures from your camera roll, pick the ones
+          you want and tap <Em>Save</Em>.
+          {photoLimit !== null && <> This album holds up to {photoLimit} photos in total, shared by everyone.</>}
+        </>
+      ) : (
+        <>
+          Pick the pictures you want, then tap <Em>Save</Em>. They upload in the background, so you can add more
+          right away.
           {photoLimit !== null && <> This album holds up to {photoLimit} photos in total, shared by everyone.</>}
         </>
       ),
