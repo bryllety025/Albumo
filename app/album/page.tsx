@@ -15,7 +15,7 @@ export default async function AlbumsPage() {
   if (albums.length === 1) redirect(`/album/${albums[0].id}`);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto text-foreground">
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto overflow-x-hidden text-foreground">
       <div className="flex shrink-0 items-center px-4 py-3">
         <Link
           href="/"

@@ -20,7 +20,7 @@ export default function PhotoGrid({
   onDownload,
 }: PhotoGridProps) {
   return (
-    <div className="h-full overflow-y-auto p-4">
+    <div className="h-full overflow-y-auto overflow-x-hidden p-4">
       <div className="grid grid-cols-3 gap-2">
         {photos.map((photo, i) => {
           const selected = selectedIds.has(photo.id);

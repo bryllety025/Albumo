@@ -52,17 +52,19 @@ export default async function Home() {
   return (
     // No bg-background here: the body paints it, and a theme's gradient or
     // pattern (also on the body) has to show through.
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto px-5 pb-6 pt-5 text-foreground">
-      <div className="flex shrink-0 items-center justify-between">
+    // overflow-x-hidden: scrolling this up and down must never also pan it sideways (it would
+    // otherwise, since a vertical scroller scrolls both ways, as soon as anything is wider than the phone).
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto overflow-x-hidden px-5 pb-6 pt-5 text-foreground">
+      <div className="flex shrink-0 items-center justify-between gap-3">
         <Logo className="h-8 w-auto" />
         <GuestNameGate />
       </div>
 
       <div className="flex shrink-0 flex-col items-center gap-4 pb-6 pt-8 text-center">
         <EventHero theme={theme} />
-        <div>
+        <div className="w-full min-w-0">
           <h1
-            className="font-display tracking-tight"
+            className="break-words font-display tracking-tight"
             style={{
               fontSize: "calc(1.875rem * var(--heading-scale, 1))",
               fontWeight: "var(--heading-weight, 700)",

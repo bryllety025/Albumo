@@ -50,16 +50,16 @@ export default function GuestNameGate() {
   return (
     <>
       {storedName ? (
-        <div className="flex items-center gap-1.5 text-sm font-medium text-indigo-600">
-          <span>Hi, {storedName}!</span>
+        <div className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-indigo-600">
+          <span className="min-w-0 truncate">Hi, {storedName}!</span>
           <button
             type="button"
             onClick={openDialog}
             aria-label="Edit your name"
-            className="group/tooltip relative text-indigo-400 hover:text-indigo-600"
+            className="group/tooltip relative shrink-0 text-indigo-400 hover:text-indigo-600"
           >
             <Pencil size={14} strokeWidth={1.75} />
-            <TooltipLabel>Edit name</TooltipLabel>
+            <TooltipLabel align="end">Edit name</TooltipLabel>
           </button>
         </div>
       ) : storedName === "" ? (

@@ -30,7 +30,7 @@ export default function PhotoList({
   onDownload,
 }: PhotoListProps) {
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto overflow-x-hidden">
       <div className="flex flex-col divide-y divide-gray-100">
         {photos.map((photo, i) => {
           const selected = selectedIds.has(photo.id);
@@ -82,7 +82,7 @@ export default function PhotoList({
                   className="group/tooltip relative rounded-full p-2 text-gray-600 hover:bg-gray-100"
                 >
                   <Download size={18} strokeWidth={1.75} />
-                  <TooltipLabel>Download</TooltipLabel>
+                  <TooltipLabel align="end">Download</TooltipLabel>
                 </button>
               </div>
             </button>
