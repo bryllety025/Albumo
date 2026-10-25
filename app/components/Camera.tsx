@@ -30,6 +30,8 @@ import {
 import { getStoredGuestName } from "@/lib/guestName";
 import { updatePhotoCountNotification } from "@/lib/notifications";
 import { getOrCreateUploaderToken } from "@/lib/uploaderToken";
+import { fetchWithRetry, uploadTimeoutMs, type UploadWait } from "@/lib/uploadRetry";
+import { cacheUpload, loadCachedUploads, uncacheUpload, uploadCacheKey } from "@/lib/uploadCache";
 import { LATE_UPLOAD_DAYS, lastUploadDay, todayInManila } from "@/lib/manilaDate";
 import { pageHeadingFont } from "@/lib/pageFont";
 import { applyPhotoStamp, formatStampDate, type StampSettings } from "@/lib/photoStamp";
@@ -258,6 +260,12 @@ type UploadJob = {
   thumbnail: string;
   uploaderName?: string;
   status: "pending" | "uploading" | "error";
+  /** Where this photo is kept on the device until the server has it (see lib/uploadCache.ts). */
+  key: string;
+  /** Settles once the photo has been written to that cache, which its first upload attempt waits for. */
+  cached?: Promise<boolean>;
+  /** Why an "uploading" photo is sitting still right now, if it is. */
+  waiting?: UploadWait;
 };
 
 function buildFilename(ext: string) {
@@ -267,6 +275,8 @@ function buildFilename(ext: string) {
 
 type Props = {
   eventName: string;
+  /** The event's slug: what photos saved on this device but not yet uploaded are filed under. */
+  eventSlug: string;
   /** The most photos the whole event may hold, across every guest's device. Null means this event has no photo limit. */
   photoLimit: number | null;
   /** How many photos the whole event held when this page loaded -- what `photoLimit` is measured against. */
@@ -301,6 +311,7 @@ function formatEventDate(date: string): string {
 
 export default function Camera({
   eventName,
+  eventSlug,
   photoLimit,
   photosUsed,
   canUpload,
@@ -405,15 +416,33 @@ export default function Camera({
         job.status = "uploading";
         syncQueue();
         try {
+          // The photo is safe on the device before any attempt to send it, so
+          // whatever happens to the connection (or to this page) from here on,
+          // it can be sent again. Every attempt reuses the same filename: the
+          // server treats a repeated name as the same photo, so a retry can
+          // never add a duplicate.
+          await job.cached;
           const formData = new FormData();
           formData.append("file", job.blob, job.filename);
           formData.append("filename", job.filename);
           if (job.uploaderName) formData.append("uploaderName", job.uploaderName);
           if (uploaderTokenRef.current) formData.append("uploaderToken", uploaderTokenRef.current);
-          const res = await fetch("/api/upload", {
-            method: "POST",
-            body: formData,
-          });
+          // A dropped connection or a server hiccup is retried on its own a
+          // few times before the guest is shown a failure to deal with.
+          const activeJob = job;
+          const res = await fetchWithRetry(
+            "/api/upload",
+            { method: "POST", body: formData },
+            {
+              timeoutMs: uploadTimeoutMs(job.blob.size),
+              onWait: (wait) => {
+                if (activeJob.waiting === (wait ?? undefined)) return;
+                activeJob.waiting = wait ?? undefined;
+                syncQueue();
+              },
+            },
+          );
+          job.waiting = undefined;
           if (res.status === 409 || res.status === 403) {
             const body = (await res.json().catch(() => null)) as { code?: string } | null;
 
@@ -425,6 +454,7 @@ export default function Camera({
               // count snaps to the limit so the camera stops offering to
               // take more.
               const dropped = queueRef.current.length;
+              for (const gone of queueRef.current) void uncacheUpload(gone.key);
               queueRef.current = [];
               syncQueue();
               if (photoLimit !== null) setPhotoCount(photoLimit);
@@ -444,6 +474,7 @@ export default function Camera({
             // slot it had optimistically reserved is freed, the same as
             // giving up on a failed upload does below.
             queueRef.current = queueRef.current.filter((j) => j !== job);
+            void uncacheUpload(job.key);
             syncQueue();
             setPhotoCount((count) => Math.max(count - 1, 0));
             showToast(
@@ -458,6 +489,8 @@ export default function Camera({
           if (!res.ok) throw new Error(await res.text());
           const data = (await res.json()) as { fileId: string; photoCount?: number | null };
           queueRef.current = queueRef.current.filter((j) => j !== job);
+          // The server has it: the copy kept on the device is no longer needed.
+          void uncacheUpload(job.key);
           syncQueue();
           setMyPhotos(addMyPhoto(data.fileId, job.thumbnail));
           // The server's count includes everyone's photos, so this also
@@ -468,8 +501,13 @@ export default function Camera({
           }
         } catch {
           job.status = "error";
+          job.waiting = undefined;
           syncQueue();
-          showToast("Couldn't share a photo. Check your connection and retry.");
+          showToast(
+            navigator.onLine === false
+              ? "You're offline. Your photos will upload again once you're back online."
+              : "Couldn't share a photo. Check your connection and retry.",
+          );
         }
       }
     } finally {
@@ -479,15 +517,61 @@ export default function Camera({
 
   const enqueueUpload = useCallback(
     (blob: Blob, filename: string, thumbnail: string, uploaderName?: string) => {
+      const key = uploadCacheKey(eventSlug, filename);
+      // Written to the device's storage first; the job's first attempt waits
+      // for that (not the guest, who is already back to shooting).
+      const cached = cacheUpload({
+        key,
+        slug: eventSlug,
+        filename,
+        blob,
+        thumbnail,
+        uploaderName,
+        createdAt: Date.now(),
+      });
       queueRef.current = [
         ...queueRef.current,
-        { id: nextJobIdRef.current++, blob, filename, thumbnail, uploaderName, status: "pending" },
+        { id: nextJobIdRef.current++, key, cached, blob, filename, thumbnail, uploaderName, status: "pending" },
       ];
       syncQueue();
       processQueue();
     },
-    [syncQueue, processQueue]
+    [eventSlug, syncQueue, processQueue]
   );
+
+  // Photos that were saved but never finished uploading -- the guest closed
+  // the page, the browser dropped it in the background, the phone died -- are
+  // picked up from the device's storage and sent as soon as the app opens.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    void loadCachedUploads(eventSlug).then((records) => {
+      const known = new Set(queueRef.current.map((j) => j.key));
+      const restored: UploadJob[] = records
+        .filter((r) => !known.has(r.key))
+        .map((r) => ({
+          id: nextJobIdRef.current++,
+          key: r.key,
+          blob: r.blob,
+          filename: r.filename,
+          thumbnail: r.thumbnail,
+          uploaderName: r.uploaderName,
+          status: "pending",
+        }));
+      if (restored.length === 0) return;
+      queueRef.current = [...queueRef.current, ...restored];
+      syncQueue();
+      // Each one holds a slot of the photo limit again, like a photo saved just now.
+      setPhotoCount((count) => count + restored.length);
+      showToast(
+        restored.length === 1
+          ? "Sharing 1 photo that didn't finish uploading."
+          : `Sharing ${restored.length} photos that didn't finish uploading.`,
+      );
+      processQueue();
+    });
+  }, [eventSlug, syncQueue, showToast, processQueue]);
 
   const retryFailedUploads = useCallback(() => {
     queueRef.current = queueRef.current.map((j) =>
@@ -497,9 +581,31 @@ export default function Camera({
     processQueue();
   }, [syncQueue, processQueue]);
 
-  // Giving up on a failed upload frees the limit slot it had reserved.
+  // A guest who walked through a dead spot shouldn't have to notice and tap
+  // Retry: whatever failed while they were away goes up again as soon as the
+  // phone says it has a connection, or as soon as they come back to the app
+  // (a phone freezes uploads while the browser is in the background).
+  useEffect(() => {
+    const retryIfFailed = () => {
+      if (queueRef.current.some((j) => j.status === "error")) retryFailedUploads();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") retryIfFailed();
+    };
+    window.addEventListener("online", retryIfFailed);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("online", retryIfFailed);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [retryFailedUploads]);
+
+  // Giving up on a failed upload frees the limit slot it had reserved, and
+  // the copy kept on the device goes with it -- it must not come back next time.
   const dismissFailedUploads = useCallback(() => {
-    const dropped = queueRef.current.filter((j) => j.status === "error").length;
+    const failed = queueRef.current.filter((j) => j.status === "error");
+    for (const gone of failed) void uncacheUpload(gone.key);
+    const dropped = failed.length;
     queueRef.current = queueRef.current.filter((j) => j.status !== "error");
     syncQueue();
     if (dropped > 0) {
@@ -1793,11 +1899,16 @@ export default function Camera({
               );
             }
             if (active > 0) {
+              const waiting = uploadQueue.find((j) => j.waiting)?.waiting;
               return (
                 <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-navy-900 px-4 py-2 text-sm text-ivory shadow-lg">
                   <Loader2 size={16} strokeWidth={1.75} className="animate-spin" />
                   <span>
-                    Uploading {active} photo{active === 1 ? "" : "s"}…
+                    {waiting === "offline"
+                      ? "Waiting for a connection…"
+                      : waiting === "retry"
+                        ? "Weak connection, retrying…"
+                        : `Uploading ${active} photo${active === 1 ? "" : "s"}…`}
                   </span>
                 </div>
               );

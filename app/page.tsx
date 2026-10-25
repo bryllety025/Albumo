@@ -94,6 +94,7 @@ export default async function Home() {
       <div className="flex shrink-0 flex-col overflow-hidden rounded-2xl">
         <Camera
           eventName={eventName}
+          eventSlug={slug}
           photoLimit={photoLimit}
           photosUsed={photosUsed}
           canUpload={canUpload}
