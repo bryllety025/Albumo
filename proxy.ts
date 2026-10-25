@@ -49,6 +49,9 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
+// `api/` is left out on purpose. The proxy has nothing to do for an API route (candidateSlug() ignores anything
+// with more than one segment), but while a proxy runs, Next copies the request body into memory and cuts it off
+// at 10 MB: a photo bigger than that reached /api/upload as a truncated file and failed to parse, every time.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icons/|sw.js).*)"],
+  matcher: ["/((?!api/|_next/static|_next/image|favicon.ico|icons/|sw.js).*)"],
 };
