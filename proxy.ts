@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { verifyEventSlug } from "@/lib/backendEvents";
 import { EVENT_COOKIE, encodeEventCookie } from "@/lib/event";
-import { MAINTENANCE_MODE } from "@/lib/maintenance";
 
 // Top-level path segments that are always real app routes, never a
 // candidate event slug.
@@ -27,15 +26,6 @@ function candidateSlug(pathname: string): string | null {
 // cookie and redirected to "/" — the rest of the app is unchanged, reading
 // that cookie instead of a subdomain to know which event it's serving.
 export async function proxy(request: NextRequest) {
-  // Under maintenance every URL, entry links included, shows the maintenance page. This comes first so a guest's
-  // link never waits on (or is registered through) a backend that is being worked on. See lib/maintenance.ts.
-  if (MAINTENANCE_MODE) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/maintenance";
-    url.search = "";
-    return NextResponse.rewrite(url);
-  }
-
   const slug = candidateSlug(request.nextUrl.pathname);
   if (!slug) {
     return NextResponse.next();
