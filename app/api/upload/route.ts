@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { uploadPhoto } from "@/lib/s3";
 import { getEventConfigFromRequest } from "@/lib/event";
-import { fetchEventUploadsMode, registerUpload } from "@/lib/backendEvents";
+import { fetchEventUploadPolicy, registerUpload } from "@/lib/backendEvents";
 import { uploadWindow } from "@/lib/manilaDate";
 
 export async function POST(req: NextRequest) {
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   // enforcement, though -- albumo-backend re-checks the same policy itself
   // when registerUpload is called below, so this can't be bypassed by
   // skipping straight to that call either.
-  const uploadsMode = await fetchEventUploadsMode(config.slug);
+  const { uploadsMode, lateUploadDays } = await fetchEventUploadPolicy(config.slug);
   if (uploadsMode === "disabled") {
     return NextResponse.json(
       { error: "Uploads are currently paused for this event.", code: "uploads_disabled" },
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   // The event's own day plus a few after it. The camera is only offered on the day itself, but a file
   // arriving here can't be told apart by where it came from, so the whole window is open to uploads.
   if (uploadsMode === "automatic") {
-    const phase = uploadWindow(config.date);
+    const phase = uploadWindow(config.date, lateUploadDays);
     if (phase !== "event_day" && phase !== "after_event") {
       return NextResponse.json(
         {

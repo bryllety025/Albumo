@@ -32,7 +32,7 @@ import { updatePhotoCountNotification } from "@/lib/notifications";
 import { getOrCreateUploaderToken } from "@/lib/uploaderToken";
 import { fetchWithRetry, uploadTimeoutMs, type UploadWait } from "@/lib/uploadRetry";
 import { cacheUpload, loadCachedUploads, uncacheUpload, uploadCacheKey } from "@/lib/uploadCache";
-import { LATE_UPLOAD_DAYS, lastUploadDay, todayInManila } from "@/lib/manilaDate";
+import { lastUploadDay, todayInManila } from "@/lib/manilaDate";
 import { pageHeadingFont } from "@/lib/pageFont";
 import { applyPhotoStamp, formatStampDate, type StampSettings } from "@/lib/photoStamp";
 import { TooltipLabel } from "./tooltip-label";
@@ -290,6 +290,8 @@ type Props = {
   canTakePhoto: boolean;
   /** The event's date, "YYYY-MM-DD", shown in the closed message when `canUpload` is false. */
   eventDate: string;
+  /** How many days after `eventDate` the camera roll stays open (the event's plan decides). */
+  lateUploadDays: number;
   /** Whether an admin has manually paused uploads for this event, independent of the date. Takes priority over the date-based closed message when true. */
   uploadsPaused: boolean;
   /**
@@ -317,6 +319,7 @@ export default function Camera({
   canUpload,
   canTakePhoto,
   eventDate,
+  lateUploadDays,
   uploadsPaused,
   stamp,
 }: Props) {
@@ -1352,7 +1355,9 @@ export default function Camera({
               {uploadsPaused
                 ? "The event host has paused new photos for now. Please check back later."
                 : eventHasPassed
-                  ? `New photos could be added until ${formatEventDate(lastUploadDay(eventDate))}, ${LATE_UPLOAD_DAYS} days after the event.`
+                  ? lateUploadDays === 0
+                    ? "New photos could only be added on the day of the event."
+                    : `New photos could be added until ${formatEventDate(lastUploadDay(eventDate, lateUploadDays))}, ${lateUploadDays === 1 ? "1 day" : `${lateUploadDays} days`} after the event.`
                   : `You can take or add photos starting ${formatEventDate(eventDate)}.`}
             </p>
             {myPhotos.length > 0 && (
@@ -1395,7 +1400,7 @@ export default function Camera({
                 <p className="font-medium text-foreground">The camera is closed</p>
                 <p className="mt-1 text-sm text-gray-500">
                   The event is over, but you can still add photos from your camera roll until{" "}
-                  {formatEventDate(lastUploadDay(eventDate))}.
+                  {formatEventDate(lastUploadDay(eventDate, lateUploadDays))}.
                 </p>
               </div>
             )}

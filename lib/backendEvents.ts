@@ -3,6 +3,7 @@
 // this device to it via a cookie.
 
 import { ALBUM_ID_PATTERN, MAX_ALBUM_PAGES, type GuestAlbum } from "./album";
+import { LATE_UPLOAD_DAYS } from "./manilaDate";
 
 const EVENTS_API_URL = process.env.EVENTS_API_URL ?? "http://localhost:3000";
 
@@ -84,26 +85,39 @@ export async function fetchEventPhotoQuota(slug: string): Promise<PhotoQuota> {
  */
 export type UploadsMode = "automatic" | "disabled" | "always_open";
 
+/**
+ * When an event takes uploads: the admin's `uploadsMode`, and -- for `automatic` -- how many days after the
+ * event's own day the camera roll stays open (the event's plan decides; without one it is LATE_UPLOAD_DAYS).
+ */
+export type UploadPolicy = { uploadsMode: UploadsMode; lateUploadDays: number };
+
 // Not cookie-baked (same reasoning as fetchEventPhotoQuota above) and,
 // unlike that one, not even revalidate-cached -- an admin's pause/resume
 // decision needs to show up the moment a guest next opens the app, not up to
 // a minute late, so this is a fully live `no-store` read on every open. Fails
-// open to "automatic" (the original design) so albumo-backend being
-// unreachable degrades to the date-based cutoff rather than either locking
-// every guest out or throwing the gate open over a network blip.
-export async function fetchEventUploadsMode(slug: string): Promise<UploadsMode> {
+// open to "automatic" and the default window (the original design) so
+// albumo-backend being unreachable degrades to the date-based cutoff rather
+// than either locking every guest out or throwing the gate open over a
+// network blip.
+export async function fetchEventUploadPolicy(slug: string): Promise<UploadPolicy> {
+  const fallback: UploadPolicy = { uploadsMode: "automatic", lateUploadDays: LATE_UPLOAD_DAYS };
   try {
     const res = await fetch(`${EVENTS_API_URL}/events/public/${encodeURIComponent(slug)}`, {
       headers: { "x-api-key": process.env.EVENTS_API_KEY ?? "" },
       cache: "no-store",
     });
-    if (!res.ok) return "automatic";
+    if (!res.ok) return fallback;
 
-    const data = (await res.json()) as { uploadsMode?: UploadsMode };
-    return data.uploadsMode === "disabled" || data.uploadsMode === "always_open" ? data.uploadsMode : "automatic";
+    const data = (await res.json()) as { uploadsMode?: UploadsMode; lateUploadDays?: number };
+    const days = data.lateUploadDays;
+    return {
+      uploadsMode: data.uploadsMode === "disabled" || data.uploadsMode === "always_open" ? data.uploadsMode : "automatic",
+      // An older albumo-backend doesn't send it; anything unreadable is the default rather than a closed or endless window.
+      lateUploadDays: Number.isInteger(days) && (days as number) >= 0 && (days as number) <= 365 ? (days as number) : LATE_UPLOAD_DAYS,
+    };
   } catch (err) {
-    console.error("Failed to read the uploads mode from albumo-backend:", err);
-    return "automatic";
+    console.error("Failed to read the uploads policy from albumo-backend:", err);
+    return fallback;
   }
 }
 

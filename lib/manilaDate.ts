@@ -13,8 +13,11 @@ const MS_PER_DAY = 86_400_000;
 
 /**
  * How many days after the event's own day guests may still add photos from
- * their camera roll (the camera itself closes when the day ends). Mirrored by
- * albumo-backend (common/utils/manila-date.ts), which enforces it on upload.
+ * their camera roll (the camera itself closes when the day ends), for an event
+ * whose plan doesn't say otherwise -- a plan's own number comes from
+ * albumo-backend as `lateUploadDays` (see fetchEventUploadPolicy) and is passed
+ * to the functions below. Mirrored by albumo-backend (common/utils/manila-date.ts),
+ * which enforces it on upload.
  */
 export const LATE_UPLOAD_DAYS = 3;
 
@@ -40,15 +43,15 @@ export function daysSinceInManila(date: string): number {
  */
 export type UploadWindow = "upcoming" | "event_day" | "after_event" | "closed";
 
-export function uploadWindow(date: string): UploadWindow {
+export function uploadWindow(date: string, lateUploadDays: number = LATE_UPLOAD_DAYS): UploadWindow {
   const days = daysSinceInManila(date);
   if (days < 0) return "upcoming";
   if (days === 0) return "event_day";
   // A malformed date gives NaN, which fails this too -- closed, not open.
-  return days <= LATE_UPLOAD_DAYS ? "after_event" : "closed";
+  return days <= lateUploadDays ? "after_event" : "closed";
 }
 
 /** The last day uploads are accepted for an event on `date`, "YYYY-MM-DD". */
-export function lastUploadDay(date: string): string {
-  return new Date((dayNumber(date) + LATE_UPLOAD_DAYS) * MS_PER_DAY).toISOString().slice(0, 10);
+export function lastUploadDay(date: string, lateUploadDays: number = LATE_UPLOAD_DAYS): string {
+  return new Date((dayNumber(date) + lateUploadDays) * MS_PER_DAY).toISOString().slice(0, 10);
 }

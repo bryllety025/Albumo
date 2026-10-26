@@ -9,7 +9,7 @@ import AlbumCard from "./components/AlbumCard";
 import GuestNameGate from "./components/GuestNameGate";
 import HowToUse from "./components/HowToUse";
 import { getRequestEventConfig } from "@/lib/event";
-import { fetchEventAlbums, fetchEventPhotoQuota, fetchEventUploadsMode, fetchGuestAppFacebookUrl } from "@/lib/backendEvents";
+import { fetchEventAlbums, fetchEventPhotoQuota, fetchEventUploadPolicy, fetchGuestAppFacebookUrl } from "@/lib/backendEvents";
 import { fetchEventTheme } from "@/lib/eventTheme";
 import { uploadWindow } from "@/lib/manilaDate";
 
@@ -33,9 +33,9 @@ export default async function Home() {
   // default, how many photos it holds so far, and an admin's own
   // upload-policy choice) -- fresh calls every load, not part of the
   // long-lived event cookie. See fetchEventPhotoQuota's own comment for why.
-  const [{ limit: photoLimit, used: photosUsed }, uploadsMode, facebookUrl, theme, albums] = await Promise.all([
+  const [{ limit: photoLimit, used: photosUsed }, { uploadsMode, lateUploadDays }, facebookUrl, theme, albums] = await Promise.all([
     fetchEventPhotoQuota(slug),
-    fetchEventUploadsMode(slug),
+    fetchEventUploadPolicy(slug),
     fetchGuestAppFacebookUrl(),
     fetchEventTheme(slug),
     fetchEventAlbums(slug),
@@ -44,7 +44,7 @@ export default async function Home() {
   // `automatic` (the default) follows the event's date: the camera and the
   // camera roll on the event's own day, then only the camera roll for a few
   // days after it (a photo taken then wasn't taken at the event).
-  const phase = uploadsMode === "disabled" ? "closed" : uploadsMode === "always_open" ? "event_day" : uploadWindow(date);
+  const phase = uploadsMode === "disabled" ? "closed" : uploadsMode === "always_open" ? "event_day" : uploadWindow(date, lateUploadDays);
   const canTakePhoto = phase === "event_day";
   const canUpload = phase === "event_day" || phase === "after_event";
   const uploadsPaused = uploadsMode === "disabled";
@@ -100,6 +100,7 @@ export default async function Home() {
           canUpload={canUpload}
           canTakePhoto={canTakePhoto}
           eventDate={date}
+          lateUploadDays={lateUploadDays}
           uploadsPaused={uploadsPaused}
           stamp={
             theme && theme.photoStamp !== "none"
