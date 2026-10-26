@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAlbumPage } from "@/lib/s3";
 import { getEventConfigFromRequest } from "@/lib/event";
 import { ALBUM_ID_PATTERN, MAX_ALBUM_PAGES } from "@/lib/album";
+import { guestGate } from "@/lib/access";
 
 // One page of an album the event owner shared, as a JPEG (page 0 is the cover). The `v` in the address is only
 // there to change it if the pages ever do, so each address always means the same picture and can be kept for
@@ -19,6 +20,8 @@ export async function GET(
       { status: 400 }
     );
   }
+  const locked = await guestGate(req, config.slug);
+  if (locked) return locked;
 
   const index = /^\d{1,2}$/.test(page) ? Number(page) : -1;
   if (!ALBUM_ID_PATTERN.test(id) || index < 0 || index >= MAX_ALBUM_PAGES) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { deletePhoto } from "@/lib/s3";
 import { getEventConfigFromRequest } from "@/lib/event";
 import { deleteGuestUpload } from "@/lib/backendEvents";
+import { guestGate } from "@/lib/access";
 
 // Lets a guest delete their own upload. albumo-backend is the authorization
 // gate (it checks `uploaderToken` against what was recorded at upload time)
@@ -18,6 +19,8 @@ export async function DELETE(
       { status: 400 }
     );
   }
+  const locked = await guestGate(req, config.slug);
+  if (locked) return locked;
 
   let uploaderToken: string | undefined;
   try {

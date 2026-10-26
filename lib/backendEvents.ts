@@ -12,6 +12,10 @@ export type VerifiedEvent = {
   eventName: string;
   /** The event's date, "YYYY-MM-DD". */
   date: string;
+  /** Whether the owner put a password on the event link. */
+  passwordProtected: boolean;
+  /** Changes whenever the owner changes or removes the password; null with none. See lib/access.ts. */
+  passwordStamp: string | null;
 };
 
 // Returns null for an unknown slug or any network/backend failure — callers
@@ -25,10 +29,132 @@ export async function verifyEventSlug(slug: string): Promise<VerifiedEvent | nul
     });
     if (!res.ok) return null;
 
-    const data = (await res.json()) as { slug: string; title: string; date: string };
-    return { slug: data.slug, eventName: data.title, date: data.date };
+    const data = (await res.json()) as {
+      slug: string;
+      title: string;
+      date: string;
+      passwordProtected?: boolean;
+      passwordStamp?: string | null;
+    };
+    // An older albumo-backend says nothing about passwords: no password, as before. One that says there is a
+    // password but not its stamp is still believed -- the safe reading of a half-answer is "locked".
+    const passwordProtected = data.passwordProtected === true;
+    return {
+      slug: data.slug,
+      eventName: data.title,
+      date: data.date,
+      passwordProtected,
+      passwordStamp: passwordProtected ? (data.passwordStamp ?? "0") : null,
+    };
   } catch (err) {
     console.error("Failed to verify event slug against albumo-backend:", err);
+    return null;
+  }
+}
+
+/** What the event owner decided about how guests get in and what they can do, from the event's Settings. */
+export type EventGuestSettings = {
+  passwordProtected: boolean;
+  /** Changes whenever the owner changes or removes the password; null with none. See lib/access.ts. */
+  passwordStamp: string | null;
+  /** Whether a guest has to give their name before sharing photos. */
+  guestNameRequired: boolean;
+  /** Whether the gallery offers a "Download all" button. */
+  allowDownloadAll: boolean;
+};
+
+// Live `no-store`, like the upload policy: a setting the owner just changed should apply the next time a guest
+// opens the app. Returns null (never throws) when albumo-backend can't be reached or answers with something
+// unreadable -- "unknown", which callers treat as the least surprising thing for that setting (see lib/access.ts
+// for the password: a guest already let in is not locked out by a network blip).
+export async function fetchEventGuestSettings(slug: string): Promise<EventGuestSettings | null> {
+  try {
+    const res = await fetch(`${EVENTS_API_URL}/events/public/${encodeURIComponent(slug)}`, {
+      headers: { "x-api-key": process.env.EVENTS_API_KEY ?? "" },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as {
+      passwordProtected?: boolean;
+      passwordStamp?: string | null;
+      guestNameRequired?: boolean;
+      allowGuestDownloadAll?: boolean;
+    };
+    const passwordProtected = data.passwordProtected === true;
+    return {
+      passwordProtected,
+      passwordStamp: passwordProtected ? (data.passwordStamp ?? "0") : null,
+      guestNameRequired: data.guestNameRequired === true,
+      // Only when the backend says so: an older one has no zip route to offer.
+      allowDownloadAll: data.allowGuestDownloadAll === true,
+    };
+  } catch (err) {
+    console.error("Failed to read the guest settings from albumo-backend:", err);
+    return null;
+  }
+}
+
+// The API routes check the settings on every request (a gallery loads one thumbnail per photo), so those share a
+// short-lived copy. Short enough that an owner's change applies within seconds; failures are not kept, so the next
+// request tries again.
+const SETTINGS_CACHE_MS = 15_000;
+const settingsCache = new Map<string, { at: number; value: EventGuestSettings }>();
+
+export async function fetchEventGuestSettingsCached(slug: string): Promise<EventGuestSettings | null> {
+  const hit = settingsCache.get(slug);
+  if (hit && Date.now() - hit.at < SETTINGS_CACHE_MS) return hit.value;
+
+  const value = await fetchEventGuestSettings(slug);
+  if (value) {
+    if (settingsCache.size > 500) settingsCache.clear();
+    settingsCache.set(slug, { at: Date.now(), value });
+  }
+  return value;
+}
+
+export type PasswordCheck =
+  /** `stamp` is the password's current stamp (null if the event has no password any more). */
+  | { ok: true; stamp: string | null }
+  | { ok: false; reason: "wrong" | "unknown_event" | "unavailable" };
+
+// Asks albumo-backend whether `password` is the event's. The password itself never comes back, only a yes or no
+// and the stamp to sign into the guest's cookie.
+export async function verifyGuestPassword(slug: string, password: string): Promise<PasswordCheck> {
+  try {
+    const res = await fetch(`${EVENTS_API_URL}/events/public/${encodeURIComponent(slug)}/verify-password`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": process.env.EVENTS_API_KEY ?? "",
+      },
+      body: JSON.stringify({ password }),
+      cache: "no-store",
+    });
+    if (res.status === 404) return { ok: false, reason: "unknown_event" };
+    if (!res.ok) return { ok: false, reason: "unavailable" };
+
+    const data = (await res.json()) as { ok?: boolean; stamp?: string | null };
+    if (data.ok !== true) return { ok: false, reason: "wrong" };
+    return { ok: true, stamp: typeof data.stamp === "string" ? data.stamp : null };
+  } catch (err) {
+    console.error("Failed to verify a guest password with albumo-backend:", err);
+    return { ok: false, reason: "unavailable" };
+  }
+}
+
+// The event's photos and videos as one ZIP, streamed from albumo-backend so a big event is never held in memory
+// here. The caller has already decided this guest may have it (see app/api/download-all). `signal` stops the
+// backend streaming when the guest gives up.
+export async function fetchEventZip(slug: string, signal?: AbortSignal): Promise<Response | null> {
+  try {
+    return await fetch(`${EVENTS_API_URL}/events/public/${encodeURIComponent(slug)}/media/zip`, {
+      headers: { "x-api-key": process.env.EVENTS_API_KEY ?? "" },
+      cache: "no-store",
+      signal,
+    });
+  } catch (err) {
+    if (!signal?.aborted) console.error("Failed to start the ZIP download with albumo-backend:", err);
     return null;
   }
 }

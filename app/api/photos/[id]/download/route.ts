@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPhoto } from "@/lib/s3";
 import { getEventConfigFromRequest } from "@/lib/event";
+import { guestGate } from "@/lib/access";
 
 export async function GET(
   req: Request,
@@ -14,6 +15,8 @@ export async function GET(
       { status: 400 }
     );
   }
+  const locked = await guestGate(req, config.slug);
+  if (locked) return locked;
 
   try {
     const { bytes, mimeType, name } = await getPhoto(config, id);

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getPhoto } from "@/lib/s3";
 import { getEventConfigFromRequest } from "@/lib/event";
+import { guestGate } from "@/lib/access";
 
 export async function GET(
   req: Request,
@@ -14,13 +15,17 @@ export async function GET(
       { status: 400 }
     );
   }
+  const locked = await guestGate(req, config.slug);
+  if (locked) return locked;
 
   try {
     const { bytes, mimeType } = await getPhoto(config, id);
     return new NextResponse(new Uint8Array(bytes), {
       headers: {
         "Content-Type": mimeType,
-        "Cache-Control": "public, max-age=31536000, immutable",
+        // `private`: which event a URL means depends on the guest's cookie, and with a password on the event
+        // the picture is not for a cache shared with anyone else.
+        "Cache-Control": "private, max-age=31536000, immutable",
       },
     });
   } catch (err) {

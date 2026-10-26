@@ -4,12 +4,20 @@ import EventHero from "./components/EventHero";
 import Camera from "./components/Camera";
 import ViewGalleryButton from "./components/ViewGalleryButton";
 import RecentPhotosStrip from "./components/RecentPhotosStrip";
+import PhotoLimitNote from "./components/PhotoLimitNote";
 import NotificationToggle from "./components/NotificationToggle";
 import AlbumCard from "./components/AlbumCard";
 import GuestNameGate from "./components/GuestNameGate";
 import HowToUse from "./components/HowToUse";
 import { getRequestEventConfig } from "@/lib/event";
-import { fetchEventAlbums, fetchEventPhotoQuota, fetchEventUploadPolicy, fetchGuestAppFacebookUrl } from "@/lib/backendEvents";
+import { requireUnlocked } from "@/lib/access";
+import {
+  fetchEventAlbums,
+  fetchEventGuestSettings,
+  fetchEventPhotoQuota,
+  fetchEventUploadPolicy,
+  fetchGuestAppFacebookUrl,
+} from "@/lib/backendEvents";
 import { fetchEventTheme } from "@/lib/eventTheme";
 import { uploadWindow } from "@/lib/manilaDate";
 
@@ -33,13 +41,19 @@ export default async function Home() {
   // default, how many photos it holds so far, and an admin's own
   // upload-policy choice) -- fresh calls every load, not part of the
   // long-lived event cookie. See fetchEventPhotoQuota's own comment for why.
-  const [{ limit: photoLimit, used: photosUsed }, { uploadsMode, lateUploadDays }, facebookUrl, theme, albums] = await Promise.all([
-    fetchEventPhotoQuota(slug),
-    fetchEventUploadPolicy(slug),
-    fetchGuestAppFacebookUrl(),
-    fetchEventTheme(slug),
-    fetchEventAlbums(slug),
-  ]);
+  const [{ limit: photoLimit, used: photosUsed }, { uploadsMode, lateUploadDays }, facebookUrl, theme, albums, guestSettings] =
+    await Promise.all([
+      fetchEventPhotoQuota(slug),
+      fetchEventUploadPolicy(slug),
+      fetchGuestAppFacebookUrl(),
+      fetchEventTheme(slug),
+      fetchEventAlbums(slug),
+      fetchEventGuestSettings(slug),
+    ]);
+  // A device registered before the host put a password on the link (or that has it from before the host changed
+  // it) is asked for it now, before anything of the event is shown.
+  await requireUnlocked(slug, guestSettings);
+  const nameRequired = guestSettings?.guestNameRequired ?? false;
   // `disabled`/`always_open` are an admin override in either direction;
   // `automatic` (the default) follows the event's date: the camera and the
   // camera roll on the event's own day, then only the camera roll for a few
@@ -57,7 +71,7 @@ export default async function Home() {
     <div className="flex h-full min-h-0 flex-col overflow-y-auto overflow-x-hidden px-5 pb-6 pt-5 text-foreground">
       <div className="flex shrink-0 items-center justify-between gap-3">
         <Logo className="h-8 w-auto" />
-        <GuestNameGate />
+        <GuestNameGate required={nameRequired} />
       </div>
 
       <div className="flex shrink-0 flex-col items-center gap-4 pb-6 pt-8 text-center">
@@ -121,10 +135,12 @@ export default async function Home() {
 
       <RecentPhotosStrip />
 
+      <PhotoLimitNote photoLimit={photoLimit} photosUsed={photosUsed} canUpload={canUpload} />
+
       <NotificationToggle eventName={eventName} photoLimit={photoLimit} photosUsed={photosUsed} />
 
       <div className="mt-4 flex shrink-0 flex-wrap items-center justify-center gap-x-5 gap-y-2">
-        <HowToUse photoLimit={photoLimit} facebookUrl={facebookUrl} canTakePhoto={canTakePhoto} />
+        <HowToUse photoLimit={photoLimit} facebookUrl={facebookUrl} canTakePhoto={canTakePhoto} nameRequired={nameRequired} />
         {facebookUrl && (
           <a
             href={facebookUrl}

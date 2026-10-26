@@ -10,7 +10,11 @@ import { TooltipLabel } from "./tooltip-label";
 // empty string is stored either way so this never asks twice on its own —
 // afterwards, the inline greeting/"Add your name" control below lets the
 // guest open the same dialog again to set or change it.
-export default function GuestNameGate() {
+//
+// When the event's host has made the name required, there is no Skip: the
+// dialog stays until a name is given, and a guest who skipped it on an earlier
+// visit (before the host asked for it) is asked again.
+export default function GuestNameGate({ required = false }: { required?: boolean }) {
   // null here doubles as "haven't checked storage yet" during the first
   // render and "never asked" once the effect below has run; both render the
   // same way (nothing, until the dialog opens), so no extra state is needed
@@ -18,13 +22,14 @@ export default function GuestNameGate() {
   const [storedName, setStoredNameValue] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [draftName, setDraftName] = useState("");
-  const isFirstAsk = storedName === null;
+  // Still owing a name: never asked, or (if one is required) asked and skipped.
+  const isFirstAsk = storedName === null || (required && storedName === "");
 
   useEffect(() => {
     const stored = getStoredGuestName();
     setStoredNameValue(stored);
-    if (stored === null) setOpen(true);
-  }, []);
+    if (stored === null || (required && stored === "")) setOpen(true);
+  }, [required]);
 
   function openDialog() {
     setDraftName(storedName ?? "");
@@ -86,7 +91,9 @@ export default function GuestNameGate() {
             </h2>
             <p className="mt-1 text-sm text-gray-500">
               {isFirstAsk
-                ? "So the host knows who shared each photo. You can skip this."
+                ? required
+                  ? "The host asks everyone to add their name, so they know who shared each photo."
+                  : "So the host knows who shared each photo. You can skip this."
                 : "This is the name that'll show up on photos you share next."}
             </p>
             <input
@@ -107,13 +114,15 @@ export default function GuestNameGate() {
               }}
             />
             <div className="mt-4 flex gap-3">
-              <button
-                type="button"
-                onClick={isFirstAsk ? handleSkip : handleCancel}
-                className="flex-1 rounded-full border border-gray-200 px-4 py-3 font-medium text-gray-600"
-              >
-                {isFirstAsk ? "Skip" : "Cancel"}
-              </button>
+              {!(isFirstAsk && required) && (
+                <button
+                  type="button"
+                  onClick={isFirstAsk ? handleSkip : handleCancel}
+                  className="flex-1 rounded-full border border-gray-200 px-4 py-3 font-medium text-gray-600"
+                >
+                  {isFirstAsk ? "Skip" : "Cancel"}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => handleSave(draftName.trim())}

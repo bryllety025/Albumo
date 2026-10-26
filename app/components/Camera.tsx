@@ -27,8 +27,9 @@ import {
   removeMyPhoto,
   type MyPhoto,
 } from "@/lib/photoStorage";
-import { getStoredGuestName } from "@/lib/guestName";
+import { GUEST_NAME_SET_EVENT, getStoredGuestName } from "@/lib/guestName";
 import { updatePhotoCountNotification } from "@/lib/notifications";
+import { publishPhotoCount } from "@/lib/photoCount";
 import { getOrCreateUploaderToken } from "@/lib/uploaderToken";
 import { fetchWithRetry, uploadTimeoutMs, type UploadWait } from "@/lib/uploadRetry";
 import { cacheUpload, loadCachedUploads, uncacheUpload, uploadCacheKey } from "@/lib/uploadCache";
@@ -428,7 +429,10 @@ export default function Camera({
           const formData = new FormData();
           formData.append("file", job.blob, job.filename);
           formData.append("filename", job.filename);
-          if (job.uploaderName) formData.append("uploaderName", job.uploaderName);
+          // The name the photo was saved with, or else the one the guest has given since: a photo kept on the
+          // device from before the host made names required should go up under the name asked for now.
+          const uploaderName = job.uploaderName || getStoredGuestName();
+          if (uploaderName) formData.append("uploaderName", uploaderName);
           if (uploaderTokenRef.current) formData.append("uploaderToken", uploaderTokenRef.current);
           // A dropped connection or a server hiccup is retried on its own a
           // few times before the guest is shown a failure to deal with.
@@ -446,6 +450,23 @@ export default function Camera({
             },
           );
           job.waiting = undefined;
+
+          // Not refused for good, unlike the cases below: the photo stays on the device and goes up once the
+          // guest has dealt with what is asked of them (and they retry, or open the app again).
+          const needsName = res.status === 400 && (await res.clone().json().catch(() => null))?.code === "name_required";
+          if (res.status === 401 || needsName) {
+            for (const waiting of queueRef.current) {
+              if (waiting.status === "pending" || waiting === job) waiting.status = "error";
+            }
+            syncQueue();
+            showToast(
+              needsName
+                ? "The host asks for your name with every photo. Add it, then retry. Your photos are saved."
+                : "This event now needs a password. Reload the page to enter it. Your photos are saved and will upload after.",
+            );
+            continue;
+          }
+
           if (res.status === 409 || res.status === 403) {
             const body = (await res.json().catch(() => null)) as { code?: string } | null;
 
@@ -597,9 +618,12 @@ export default function Camera({
     };
     window.addEventListener("online", retryIfFailed);
     document.addEventListener("visibilitychange", onVisible);
+    // A photo the host's required name turned away goes up as soon as the guest has given theirs.
+    window.addEventListener(GUEST_NAME_SET_EVENT, retryIfFailed);
     return () => {
       window.removeEventListener("online", retryIfFailed);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener(GUEST_NAME_SET_EVENT, retryIfFailed);
     };
   }, [retryFailedUploads]);
 
@@ -688,6 +712,13 @@ export default function Camera({
 
   const remaining = Math.max(effectivePhotoLimit - photoCount, 0);
   const limitReached = remaining <= 0;
+
+  // The "photos left" note sits further down the page, under the Just Added strip (PhotoLimitNote): it reads the
+  // count from here, so it drops the moment a photo is saved or deleted, as the camera's own screens do.
+  useEffect(() => {
+    publishPhotoCount(photoCount);
+  }, [photoCount]);
+  useEffect(() => () => publishPhotoCount(null), []);
 
   // Only meaningful when !canUpload: whether the event's day hasn't arrived
   // yet, or has already passed, so the closed message below can say which.
@@ -1461,11 +1492,6 @@ export default function Camera({
               </button>
             )}
 
-            {photoLimit !== null && (
-              <p className="bg-surface px-4 pb-3 pt-1 text-center text-xs text-gray-500">
-                {remaining} of {photoLimit} photo{photoLimit === 1 ? "" : "s"} left for this event
-              </p>
-            )}
           </div>
         ))}
 

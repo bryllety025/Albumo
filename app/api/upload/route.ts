@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { uploadPhoto } from "@/lib/s3";
 import { getEventConfigFromRequest } from "@/lib/event";
-import { fetchEventUploadPolicy, registerUpload } from "@/lib/backendEvents";
+import { fetchEventGuestSettings, fetchEventUploadPolicy, registerUpload } from "@/lib/backendEvents";
+import { lockedResponse } from "@/lib/access";
 import { uploadWindow } from "@/lib/manilaDate";
 
 export async function POST(req: NextRequest) {
@@ -13,6 +14,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Both live (not the few-seconds-old copy the read-only routes use): what the host decided about the password
+  // and the name, and what an admin decided about the upload policy, apply to the very next photo.
+  const [guestSettings, { uploadsMode, lateUploadDays }] = await Promise.all([
+    fetchEventGuestSettings(config.slug),
+    fetchEventUploadPolicy(config.slug),
+  ]);
+  const locked = lockedResponse(req, config.slug, guestSettings);
+  if (locked) return locked;
+
   // A fast local pre-check, same role as the old date-only check this
   // replaces: the UI already hides "Take Photo"/"Choose Photo" when it
   // shouldn't be allowed, but this is what actually stops a request made
@@ -21,7 +31,6 @@ export async function POST(req: NextRequest) {
   // enforcement, though -- albumo-backend re-checks the same policy itself
   // when registerUpload is called below, so this can't be bypassed by
   // skipping straight to that call either.
-  const { uploadsMode, lateUploadDays } = await fetchEventUploadPolicy(config.slug);
   if (uploadsMode === "disabled") {
     return NextResponse.json(
       { error: "Uploads are currently paused for this event.", code: "uploads_disabled" },
@@ -57,6 +66,15 @@ export async function POST(req: NextRequest) {
   if (!(file instanceof Blob) || typeof filename !== "string") {
     return NextResponse.json(
       { error: "Missing file or filename" },
+      { status: 400 }
+    );
+  }
+
+  // The host asked for every photo to carry a name. The camera makes sure it has one; this is what stops a request
+  // made without it, before anything is written to S3.
+  if (guestSettings?.guestNameRequired && !uploaderName?.trim()) {
+    return NextResponse.json(
+      { error: "Add your name to share photos.", code: "name_required" },
       { status: 400 }
     );
   }

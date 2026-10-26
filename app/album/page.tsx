@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import { getRequestEventConfig } from "@/lib/event";
-import { fetchEventAlbums } from "@/lib/backendEvents";
+import { requireUnlocked } from "@/lib/access";
+import { fetchEventAlbums, fetchEventGuestSettings } from "@/lib/backendEvents";
 import { albumPageUrl } from "@/lib/album";
 
 // The albums the event owner has shared. With just the one there is nothing to choose, so it opens straight away.
@@ -10,6 +11,7 @@ export default async function AlbumsPage() {
   const config = await getRequestEventConfig();
   // The home page says what to do without an invite link.
   if (!config) redirect("/");
+  await requireUnlocked(config.slug, await fetchEventGuestSettings(config.slug));
 
   const albums = await fetchEventAlbums(config.slug);
   if (albums.length === 1) redirect(`/album/${albums[0].id}`);

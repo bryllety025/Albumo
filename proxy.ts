@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { verifyEventSlug } from "@/lib/backendEvents";
-import { EVENT_COOKIE, encodeEventCookie } from "@/lib/event";
+import { ACCESS_COOKIE, hasAccess, registerDevice } from "@/lib/access";
 
 // Top-level path segments that are always real app routes, never a
 // candidate event slug.
 const RESERVED_TOP_LEVEL_PATHS = new Set(["", "gallery", "album", "api"]);
-
-const EVENT_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 
 function candidateSlug(pathname: string): string | null {
   const segments = pathname.split("/").filter(Boolean);
@@ -25,6 +23,10 @@ function candidateSlug(pathname: string): string | null {
 // event in albumo-backend, this device is registered to that event via a
 // cookie and redirected to "/" — the rest of the app is unchanged, reading
 // that cookie instead of a subdomain to know which event it's serving.
+//
+// An event whose owner has put a password on its link registers the device only once the guest has given the
+// password (see app/unlock): until then the guest is sent to the page that asks for it, and the event's own
+// cookie is not set.
 export async function proxy(request: NextRequest) {
   const slug = candidateSlug(request.nextUrl.pathname);
   if (!slug) {
@@ -38,14 +40,12 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  if (!hasAccess(event, request.cookies.get(ACCESS_COOKIE)?.value)) {
+    return NextResponse.redirect(new URL(`/unlock/${encodeURIComponent(event.slug)}`, request.url));
+  }
+
   const response = NextResponse.redirect(new URL("/", request.url));
-  response.cookies.set(EVENT_COOKIE, encodeEventCookie(event), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: EVENT_COOKIE_MAX_AGE_SECONDS,
-  });
+  registerDevice(response, event, null);
   return response;
 }
 

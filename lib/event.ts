@@ -45,7 +45,7 @@ function decodeEventCookie(value: string | undefined): EventInfo | null {
   return null;
 }
 
-function getCookieFromHeader(cookieHeader: string | null, name: string): string | undefined {
+export function getCookieFromHeader(cookieHeader: string | null, name: string): string | undefined {
   if (!cookieHeader) return undefined;
   const prefix = `${name}=`;
   const match = cookieHeader

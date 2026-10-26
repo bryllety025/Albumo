@@ -102,13 +102,15 @@ type Props = {
   facebookUrl: string | null;
   /** Whether the camera is open; after the event's own day only the camera roll is, and the walkthrough says so. */
   canTakePhoto: boolean;
+  /** Whether the host requires a name, so a guest who skipped it earlier is asked again and the walkthrough waits for that. */
+  nameRequired?: boolean;
 };
 
 // A short walkthrough that opens by itself the first time a guest opens the
 // app on a device (once the name prompt has been dealt with, so the two never
 // stack) and ends by asking them to follow Albumo on Facebook. The link it
 // renders lets anyone replay it later.
-export default function HowToUse({ photoLimit, facebookUrl, canTakePhoto }: Props) {
+export default function HowToUse({ photoLimit, facebookUrl, canTakePhoto, nameRequired = false }: Props) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
   const titleId = useId();
@@ -126,13 +128,15 @@ export default function HowToUse({ photoLimit, facebookUrl, canTakePhoto }: Prop
     // A first-time guest is asked for their name first; wait for the answer
     // (saved or skipped) instead of opening on top of that dialog. One who has
     // already answered gets a moment to see the page before it opens.
-    if (getStoredGuestName() !== null) {
+    // A guest who skipped the name before the host made it required is asked again, so wait for that too.
+    const stored = getStoredGuestName();
+    if (stored !== null && !(nameRequired && stored === "")) {
       const timer = setTimeout(show, 400);
       return () => clearTimeout(timer);
     }
     window.addEventListener(GUEST_NAME_SET_EVENT, show, { once: true });
     return () => window.removeEventListener(GUEST_NAME_SET_EVENT, show);
-  }, []);
+  }, [nameRequired]);
 
   const close = useCallback(() => {
     markHowToUseSeen();

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCover } from "@/lib/s3";
 import { getEventConfigFromRequest } from "@/lib/event";
 import { COVER_NAME_PATTERN } from "@/lib/theme";
+import { guestGate } from "@/lib/access";
 
 // Decided here from the file's extension, not taken from whatever the bucket
 // says the object is.
@@ -23,6 +24,8 @@ export async function GET(req: Request) {
       { status: 400 }
     );
   }
+  const locked = await guestGate(req, config.slug);
+  if (locked) return locked;
 
   const name = new URL(req.url).searchParams.get("v") ?? "";
   if (!COVER_NAME_PATTERN.test(name)) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -25,6 +25,10 @@ type Layout = "grid" | "list";
 type SortOrder = "desc" | "asc";
 
 const DOWNLOAD_STAGGER_MS = 400;
+// The most files albumo-backend puts in one ZIP; an album with more has to be downloaded a selection at a time.
+const MAX_ZIP_FILES = 2000;
+// How long "Download all" stays out of reach after it has started, so a second tap can't start a second ZIP.
+const DOWNLOAD_ALL_COOLDOWN_MS = 8000;
 
 function triggerDownload(id: string, name: string) {
   const a = document.createElement("a");
@@ -35,7 +39,9 @@ function triggerDownload(id: string, name: string) {
   document.body.removeChild(a);
 }
 
-export default function GalleryView() {
+type DownloadAll = "idle" | "checking" | "started";
+
+export default function GalleryView({ allowDownloadAll = false }: { allowDownloadAll?: boolean }) {
   const [photos, setPhotos] = useState<PhotoFile[] | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [layout, setLayout] = useState<Layout>("grid");
@@ -44,6 +50,15 @@ export default function GalleryView() {
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [downloadingSelection, setDownloadingSelection] = useState(false);
   const [sharingPhotoId, setSharingPhotoId] = useState<string | null>(null);
+  const [downloadAll, setDownloadAll] = useState<DownloadAll>("idle");
+  const [downloadAllError, setDownloadAllError] = useState<string | null>(null);
+  const downloadAllTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (downloadAllTimerRef.current) clearTimeout(downloadAllTimerRef.current);
+    };
+  }, []);
 
   const loadPhotos = useCallback(async () => {
     setStatus("loading");
@@ -111,6 +126,37 @@ export default function GalleryView() {
     setTimeout(() => setDownloadingSelection(false), selected.length * DOWNLOAD_STAGGER_MS);
   }, [selectedIds, sortedPhotos, downloadingSelection]);
 
+  // The ZIP is streamed by the server, so the browser starts saving it at once and keeps going; this only has to
+  // start it. It asks first (`?check=1`) so that a refusal -- the host switched the button off meanwhile, or the
+  // password changed -- is a message here instead of a saved error page.
+  const handleDownloadAll = useCallback(async () => {
+    if (downloadAll !== "idle") return;
+    setDownloadAllError(null);
+    setDownloadAll("checking");
+    try {
+      const res = await fetch("/api/download-all?check=1");
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        setDownloadAllError(body?.error ?? "Couldn't start the download. Try again in a moment.");
+        setDownloadAll("idle");
+        return;
+      }
+    } catch {
+      setDownloadAllError("Couldn't reach the server. Check your connection and try again.");
+      setDownloadAll("idle");
+      return;
+    }
+
+    const a = document.createElement("a");
+    a.href = "/api/download-all";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    setDownloadAll("started");
+    downloadAllTimerRef.current = setTimeout(() => setDownloadAll("idle"), DOWNLOAD_ALL_COOLDOWN_MS);
+  }, [downloadAll]);
+
   const openPreview = useCallback((index: number) => setPreviewIndex(index), []);
   const closePreview = useCallback(() => setPreviewIndex(null), []);
   const previewPrev = useCallback(() => {
@@ -121,6 +167,10 @@ export default function GalleryView() {
   }, [sortedPhotos.length]);
 
   const previewPhoto = previewIndex !== null ? sortedPhotos[previewIndex] : null;
+  // Offered when the host leaves it on and there is something to download, until the guest starts picking photos
+  // (then the bar below is about their selection).
+  const showDownloadAll = allowDownloadAll && status === "loaded" && sortedPhotos.length > 0 && selectedIds.size === 0;
+  const tooManyForZip = sortedPhotos.length > MAX_ZIP_FILES;
 
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
@@ -212,6 +262,33 @@ export default function GalleryView() {
             />
           ))}
       </div>
+
+      {showDownloadAll && (
+        <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-gray-100 bg-background px-4 py-3">
+          <span aria-live="polite" className={`min-w-0 flex-1 text-sm ${downloadAllError ? "font-medium text-red-600" : "text-gray-600"}`}>
+            {downloadAllError ??
+              (tooManyForZip
+                ? "Too many to download at once. Select the ones you want."
+                : downloadAll === "started"
+                  ? "Your download is starting. A big album can take a minute to begin."
+                  : `${sortedPhotos.length.toLocaleString()} ${sortedPhotos.length === 1 ? "photo" : "photos"}`)}
+          </span>
+          {!tooManyForZip && (
+            <button
+              onClick={handleDownloadAll}
+              disabled={downloadAll !== "idle"}
+              className="inline-flex shrink-0 items-center gap-2 rounded-full bg-navy-900 px-5 py-2.5 text-sm font-medium text-ivory hover:bg-navy-900/90 disabled:opacity-50"
+            >
+              {downloadAll === "checking" ? (
+                <Loader2 size={16} className="animate-spin" strokeWidth={1.75} />
+              ) : (
+                <Download size={16} strokeWidth={1.75} />
+              )}
+              {downloadAll === "checking" ? "Preparing…" : "Download all"}
+            </button>
+          )}
+        </div>
+      )}
 
       {selectedIds.size > 0 && (
         <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-gray-100 bg-background px-4 py-3">
