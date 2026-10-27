@@ -14,6 +14,7 @@ import {
 import { facebookFollowUrl } from "@/lib/facebook";
 import { GUEST_NAME_SET_EVENT, getStoredGuestName } from "@/lib/guestName";
 import { hasSeenHowToUse, markHowToUseSeen } from "@/lib/howToUse";
+import { MAX_PHOTOS_PER_UPLOAD } from "@/lib/photoBatch";
 
 type Step = { icon: LucideIcon; title: string; body: ReactNode };
 
@@ -39,13 +40,14 @@ function buildSteps(photoLimit: number | null, canTakePhoto: boolean): Step[] {
       title: "Add your photos",
       body: canTakePhoto ? (
         <>
-          Tap <Em>Take Photo</Em> to open your camera, or <Em>Choose Photo</Em> to pick pictures from your camera
-          roll. Everything you add joins the shared album right away.
+          Tap <Em>Take Photo</Em> to open your camera, or <Em>Choose Photo</Em> to pick up to {MAX_PHOTOS_PER_UPLOAD}{" "}
+          pictures at a time from your camera roll. Everything you add joins the shared album right away.
         </>
       ) : (
         <>
-          The camera is only open on the day of the event, but you can still tap <Em>Choose Photo</Em> to pick
-          pictures from your camera roll. Everything you add joins the shared album right away.
+          The camera is only open on the day of the event, but you can still tap <Em>Choose Photo</Em> to pick up
+          to {MAX_PHOTOS_PER_UPLOAD} pictures at a time from your camera roll. Everything you add joins the shared
+          album right away.
         </>
       ),
     },

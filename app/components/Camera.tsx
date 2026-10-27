@@ -28,6 +28,8 @@ import {
   type MyPhoto,
 } from "@/lib/photoStorage";
 import { GUEST_NAME_SET_EVENT, getStoredGuestName } from "@/lib/guestName";
+import { MAX_PHOTOS_PER_UPLOAD, knowsPickLimit, rememberPickLimit } from "@/lib/photoBatch";
+import PickLimitSheet from "./PickLimitSheet";
 import { updatePhotoCountNotification } from "@/lib/notifications";
 import { publishPhotoCount } from "@/lib/photoCount";
 import { getOrCreateUploaderToken } from "@/lib/uploaderToken";
@@ -368,6 +370,11 @@ export default function Camera({
   // guest sees that the shutter fired.
   const [shutterActive, setShutterActive] = useState(false);
   const [previewItems, setPreviewItems] = useState<PreviewItem[]>([]);
+  // How many photos the guest picked from their camera roll when that was more than MAX_PHOTOS_PER_UPLOAD (only the
+  // first few are on the review screen, which says so); null when nothing was left out.
+  const [pickedCount, setPickedCount] = useState<number | null>(null);
+  // The "pick up to N photos at a time" notice that comes before the phone's photo picker (see lib/photoBatch.ts).
+  const [pickLimitOpen, setPickLimitOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   // How many photos the whole event holds, as far as this page knows: what
   // the server said at load, plus this device's own photos still waiting to
@@ -882,14 +889,31 @@ export default function Camera({
 
   const openLibrary = useCallback(() => {
     if (!canUpload) return;
+    // The picker can't be made to stop at a number, so a guest who hasn't yet shown they know the limit is told
+    // before it opens, not after they have ticked 30 photos.
+    if (!knowsPickLimit()) {
+      setPickLimitOpen(true);
+      return;
+    }
     libraryInputRef.current?.click();
   }, [canUpload]);
 
+  // Opens the picker from the notice's own button, which is a tap of its own, so the browser allows it.
+  const chooseFromPickLimitNotice = useCallback(() => {
+    setPickLimitOpen(false);
+    libraryInputRef.current?.click();
+  }, []);
+
+  const closePickLimitNotice = useCallback(() => setPickLimitOpen(false), []);
+
   const handleLibraryChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const selected = Array.from(e.target.files ?? []);
+      const picked = Array.from(e.target.files ?? []);
       e.target.value = "";
-      if (selected.length === 0 || !canUpload) return;
+      if (picked.length === 0 || !canUpload) return;
+      // A few at a time (see MAX_PHOTOS_PER_UPLOAD): the rest are not decoded at all.
+      const selected = picked.slice(0, MAX_PHOTOS_PER_UPLOAD);
+      setPickedCount(picked.length > selected.length ? picked.length : null);
       const items: PreviewItem[] = selected.map((file) => {
         const ext =
           (file.name.includes(".") && file.name.split(".").pop()) ||
@@ -1255,6 +1279,7 @@ export default function Camera({
       prev.forEach((item) => URL.revokeObjectURL(item.url));
       return [];
     });
+    setPickedCount(null);
   }, []);
 
   const toggleItemSelected = useCallback((index: number) => {
@@ -1289,6 +1314,9 @@ export default function Camera({
     const { photoCountAfter, anySucceeded, allSkippedForLimit } = await saveItems(toSave);
     setIsSaving(false);
 
+    // A pick that stayed within the limit shows the guest knows it: the notice stops coming before the picker.
+    if (anySucceeded && source === "library" && pickedCount === null) rememberPickLimit();
+
     if (anySucceeded || allSkippedForLimit) {
       resetPreview();
       if (source === "camera" && photoCountAfter < effectivePhotoLimit) {
@@ -1298,7 +1326,7 @@ export default function Camera({
         setSource(null);
       }
     }
-  }, [previewItems, saveItems, effectivePhotoLimit, source, resetPreview, openLive]);
+  }, [previewItems, saveItems, effectivePhotoLimit, source, pickedCount, resetPreview, openLive]);
 
   // How many of the photos on the review screen the guest has left ticked.
   const selectedCount = previewItems.filter((item) => item.selected).length;
@@ -1349,6 +1377,7 @@ export default function Camera({
         onChange={handleLibraryChange}
         className="sr-only"
       />
+      <PickLimitSheet open={pickLimitOpen} onChoose={chooseFromPickLimitNotice} onClose={closePickLimitNotice} />
       <canvas ref={canvasRef} className="hidden" />
 
       {stage === "idle" &&
@@ -1456,7 +1485,7 @@ export default function Camera({
                   Choose Photo
                 </span>
                 <span className={`block text-sm ${canTakePhoto ? "text-gray-500" : "text-white/60"}`}>
-                  Upload from your camera roll
+                  Upload up to {MAX_PHOTOS_PER_UPLOAD} from your camera roll
                 </span>
               </span>
               <ChevronRight
@@ -1698,6 +1727,12 @@ export default function Camera({
                 <p className="mt-0.5 text-sm text-ivory/70">
                   {selectedCount} of {previewItems.length} selected. Tap a photo to skip it.
                 </p>
+                {pickedCount !== null && (
+                  <p className="mt-1 text-sm text-amber-300">
+                    You picked {pickedCount} photos, but up to {MAX_PHOTOS_PER_UPLOAD} can be shared at a time. Add the
+                    rest after these.
+                  </p>
+                )}
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-4 pb-4">
                 <div className="mx-auto grid w-full max-w-2xl grid-cols-3 gap-2 sm:grid-cols-4">
