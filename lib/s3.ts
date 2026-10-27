@@ -3,8 +3,10 @@ import {
   PutObjectCommand,
   ListObjectsV2Command,
   GetObjectCommand,
+  HeadObjectCommand,
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
+import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import type { EventConfig } from "./event";
 
 function keyPrefix(folder: string): string {
@@ -75,6 +77,51 @@ export async function uploadPhoto(
     })
   );
   return filename;
+}
+
+// How long a guest's phone has to START sending a photo with the form below. S3 checks this when the request
+// begins, so a slow upload that started in time is not cut off by it. A fresh form is asked for before every attempt.
+const UPLOAD_FORM_TTL_SECONDS = 10 * 60;
+
+// A form the guest's phone can POST one photo to straight at S3, so the bytes never pass through this server. The
+// credentials of this app sign it; the phone never sees them. It is good for exactly this key, this content type
+// and this many bytes (all three are in the signed policy, and S3 refuses an upload that differs), so it can't be
+// used to put anything else in the bucket, or anywhere else in it.
+//
+// A POST (not a PUT) on purpose: a form-style POST is a "simple" cross-origin request, which a browser sends
+// without first asking S3's permission, so the bucket needs no CORS setting at all. The price is that the browser
+// can't read S3's answer; the caller finds out whether the photo arrived with getUploadedSize instead.
+export async function createUploadForm(
+  config: EventConfig,
+  filename: string,
+  mimeType: string,
+  size: number
+): Promise<{ url: string; fields: Record<string, string> }> {
+  return createPresignedPost(getClient(config), {
+    Bucket: config.awsS3Bucket,
+    Key: `${keyPrefix(config.awsS3Folder)}${filename}`,
+    Fields: { "Content-Type": mimeType },
+    Conditions: [["content-length-range", size, size]],
+    Expires: UPLOAD_FORM_TTL_SECONDS,
+  });
+}
+
+// The size in bytes of a photo that has been uploaded, or null if there is no such photo (yet).
+export async function getUploadedSize(config: EventConfig, filename: string): Promise<number | null> {
+  try {
+    const res = await getClient(config).send(
+      new HeadObjectCommand({
+        Bucket: config.awsS3Bucket,
+        Key: `${keyPrefix(config.awsS3Folder)}${filename}`,
+      })
+    );
+    return res.ContentLength ?? 0;
+  } catch (err) {
+    // A HEAD has no body to carry S3's error code, so "not there" arrives as a 404 / NotFound.
+    const e = err as { name?: string; $metadata?: { httpStatusCode?: number } };
+    if (e.name === "NotFound" || e.name === "NoSuchKey" || e.$metadata?.httpStatusCode === 404) return null;
+    throw err;
+  }
 }
 
 export async function listPhotos(config: EventConfig): Promise<PhotoFile[]> {

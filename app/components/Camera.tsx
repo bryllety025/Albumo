@@ -31,7 +31,8 @@ import { GUEST_NAME_SET_EVENT, getStoredGuestName } from "@/lib/guestName";
 import { updatePhotoCountNotification } from "@/lib/notifications";
 import { publishPhotoCount } from "@/lib/photoCount";
 import { getOrCreateUploaderToken } from "@/lib/uploaderToken";
-import { fetchWithRetry, uploadTimeoutMs, type UploadWait } from "@/lib/uploadRetry";
+import type { UploadWait } from "@/lib/uploadRetry";
+import { sendPhoto } from "@/lib/directUpload";
 import { cacheUpload, loadCachedUploads, uncacheUpload, uploadCacheKey } from "@/lib/uploadCache";
 import { lastUploadDay, todayInManila } from "@/lib/manilaDate";
 import { pageHeadingFont } from "@/lib/pageFont";
@@ -267,6 +268,8 @@ type UploadJob = {
   cached?: Promise<boolean>;
   /** Why an "uploading" photo is sitting still right now, if it is. */
   waiting?: UploadWait;
+  /** The photo is already in S3 and only has to be registered (see lib/directUpload.ts). */
+  stored?: boolean;
 };
 
 function buildFilename(ext: string) {
@@ -426,29 +429,21 @@ export default function Camera({
           // server treats a repeated name as the same photo, so a retry can
           // never add a duplicate.
           await job.cached;
-          const formData = new FormData();
-          formData.append("file", job.blob, job.filename);
-          formData.append("filename", job.filename);
           // The name the photo was saved with, or else the one the guest has given since: a photo kept on the
           // device from before the host made names required should go up under the name asked for now.
-          const uploaderName = job.uploaderName || getStoredGuestName();
-          if (uploaderName) formData.append("uploaderName", uploaderName);
-          if (uploaderTokenRef.current) formData.append("uploaderToken", uploaderTokenRef.current);
-          // A dropped connection or a server hiccup is retried on its own a
-          // few times before the guest is shown a failure to deal with.
+          const uploaderName = job.uploaderName || getStoredGuestName() || undefined;
+          // The photo goes straight to S3 (see lib/directUpload.ts). A dropped connection or a server hiccup is
+          // retried on its own a few times before the guest is shown a failure to deal with.
           const activeJob = job;
-          const res = await fetchWithRetry(
-            "/api/upload",
-            { method: "POST", body: formData },
-            {
-              timeoutMs: uploadTimeoutMs(job.blob.size),
-              onWait: (wait) => {
-                if (activeJob.waiting === (wait ?? undefined)) return;
-                activeJob.waiting = wait ?? undefined;
-                syncQueue();
-              },
+          const res = await sendPhoto(job, {
+            uploaderName,
+            uploaderToken: uploaderTokenRef.current,
+            onWait: (wait) => {
+              if (activeJob.waiting === (wait ?? undefined)) return;
+              activeJob.waiting = wait ?? undefined;
+              syncQueue();
             },
-          );
+          });
           job.waiting = undefined;
 
           // Not refused for good, unlike the cases below: the photo stays on the device and goes up once the

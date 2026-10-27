@@ -1,59 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { uploadPhoto } from "@/lib/s3";
-import { getEventConfigFromRequest } from "@/lib/event";
-import { fetchEventGuestSettings, fetchEventUploadPolicy, registerUpload } from "@/lib/backendEvents";
-import { lockedResponse } from "@/lib/access";
-import { uploadWindow } from "@/lib/manilaDate";
+import { registerUpload } from "@/lib/backendEvents";
+import { checkUploadAllowed, nameRequiredResponse, registeredResponse } from "@/lib/uploadGate";
 
+// The photo comes through here as the request body. The camera no longer sends photos this way (it asks
+// /api/upload/prepare for a form and sends the photo straight to S3, then tells /api/upload/complete): a host like
+// Vercel refuses a request body over 4.5 MB before it gets here. This is the way back for a photo that couldn't go
+// straight to S3, and it can only ever carry the photos small enough to pass.
 export async function POST(req: NextRequest) {
-  const config = getEventConfigFromRequest(req);
-  if (!config) {
-    return NextResponse.json(
-      { error: "No event context. Open your invite link first." },
-      { status: 400 }
-    );
-  }
-
-  // Both live (not the few-seconds-old copy the read-only routes use): what the host decided about the password
-  // and the name, and what an admin decided about the upload policy, apply to the very next photo.
-  const [guestSettings, { uploadsMode, lateUploadDays }] = await Promise.all([
-    fetchEventGuestSettings(config.slug),
-    fetchEventUploadPolicy(config.slug),
-  ]);
-  const locked = lockedResponse(req, config.slug, guestSettings);
-  if (locked) return locked;
-
-  // A fast local pre-check, same role as the old date-only check this
-  // replaces: the UI already hides "Take Photo"/"Choose Photo" when it
-  // shouldn't be allowed, but this is what actually stops a request made
-  // directly (or from a stale page left open since before midnight, or since
-  // an admin last changed this event's upload policy). Not the only
-  // enforcement, though -- albumo-backend re-checks the same policy itself
-  // when registerUpload is called below, so this can't be bypassed by
-  // skipping straight to that call either.
-  if (uploadsMode === "disabled") {
-    return NextResponse.json(
-      { error: "Uploads are currently paused for this event.", code: "uploads_disabled" },
-      { status: 403 }
-    );
-  }
-  // The event's own day plus a few after it. The camera is only offered on the day itself, but a file
-  // arriving here can't be told apart by where it came from, so the whole window is open to uploads.
-  if (uploadsMode === "automatic") {
-    const phase = uploadWindow(config.date, lateUploadDays);
-    if (phase !== "event_day" && phase !== "after_event") {
-      return NextResponse.json(
-        {
-          error:
-            phase === "upcoming"
-              ? "Photo sharing isn't open yet for this event."
-              : "Photo sharing has ended for this event.",
-          code: "uploads_closed",
-        },
-        { status: 403 }
-      );
-    }
-  }
+  const gate = await checkUploadAllowed(req);
+  if (!gate.ok) return gate.response;
+  const { config, guestSettings } = gate;
 
   const formData = await req.formData();
   const file = formData.get("file");
@@ -70,14 +27,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // The host asked for every photo to carry a name. The camera makes sure it has one; this is what stops a request
-  // made without it, before anything is written to S3.
-  if (guestSettings?.guestNameRequired && !uploaderName?.trim()) {
-    return NextResponse.json(
-      { error: "Add your name to share photos.", code: "name_required" },
-      { status: 400 }
-    );
-  }
+  const nameRequired = nameRequiredResponse(guestSettings, uploaderName);
+  if (nameRequired) return nameRequired;
 
   try {
     const bytes = Buffer.from(await file.arrayBuffer());
@@ -88,30 +39,7 @@ export async function POST(req: NextRequest) {
       file.type || "image/jpeg"
     );
     const registered = await registerUpload(config.slug, fileId, uploaderName, uploaderToken);
-    if (!registered.ok) {
-      // albumo-backend has already deleted the S3 object it would otherwise
-      // have orphaned -- this guest's upload did not go through, unlike every
-      // other registerUpload failure (which is best-effort and already in S3).
-      if (registered.reason === "uploads_disabled") {
-        return NextResponse.json(
-          { error: "Uploads are currently paused for this event.", code: "uploads_disabled" },
-          { status: 403 }
-        );
-      }
-      if (registered.reason === "photo_limit_reached") {
-        return NextResponse.json(
-          { error: "This event has reached its photo limit.", code: "photo_limit_reached" },
-          { status: 409 }
-        );
-      }
-      return NextResponse.json(
-        { error: "This event has reached its guest limit.", code: "guest_limit_reached" },
-        { status: 409 }
-      );
-    }
-    // `photoCount` is how many photos the whole event holds now, which is
-    // what its limit is measured against -- the camera shows it back.
-    return NextResponse.json({ fileId, photoCount: registered.photoCount });
+    return registeredResponse(fileId, registered);
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Upload to S3 failed" }, { status: 500 });
