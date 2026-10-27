@@ -1300,6 +1300,9 @@ export default function Camera({
     }
   }, [previewItems, saveItems, effectivePhotoLimit, source, resetPreview, openLive]);
 
+  // How many of the photos on the review screen the guest has left ticked.
+  const selectedCount = previewItems.filter((item) => item.selected).length;
+
   if (error) {
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-background p-8 text-center text-foreground">
@@ -1677,57 +1680,79 @@ export default function Camera({
       )}
 
       {stage === "preview" && previewItems.length > 0 && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-camera-bg p-6">
-          <div className="flex min-h-0 w-full flex-1 items-center justify-center">
-            {previewItems.length === 1 ? (
+        // Three rows that can't overlap: what to do (optional), the photos (which scroll on their own when there
+        // are many), and the buttons, on a solid bar of their own so no photo ever shows through or sits under them.
+        <div className="fixed inset-0 z-50 flex flex-col bg-camera-bg">
+          {previewItems.length === 1 ? (
+            <div className="flex min-h-0 flex-1 items-center justify-center p-6">
               <img
                 src={previewItems[0].url}
                 alt="Captured photo"
                 className="max-h-full max-w-full rounded-lg object-contain"
               />
-            ) : (
-              <div className="grid w-full max-w-md grid-cols-3 gap-2 overflow-y-auto">
-                {previewItems.map((item, i) => (
-                  <button
-                    key={item.url}
-                    onClick={() => toggleItemSelected(i)}
-                    className={`relative aspect-square overflow-hidden rounded-lg border-2 transition-opacity ${
-                      item.selected ? "border-indigo-600" : "border-transparent opacity-50"
-                    }`}
-                  >
-                    <img
-                      src={item.url}
-                      alt={`Burst photo ${i + 1}`}
-                      className="h-full w-full object-cover"
-                    />
-                    <span
-                      className={`absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full ${
-                        item.selected ? "bg-indigo-600" : "bg-black/40"
+            </div>
+          ) : (
+            <>
+              <div className="shrink-0 px-5 pb-3 pt-[max(1rem,env(safe-area-inset-top))] text-center">
+                <p className="text-base font-medium text-ivory">Choose photos to share</p>
+                <p className="mt-0.5 text-sm text-ivory/70">
+                  {selectedCount} of {previewItems.length} selected. Tap a photo to skip it.
+                </p>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-4 pb-4">
+                <div className="mx-auto grid w-full max-w-2xl grid-cols-3 gap-2 sm:grid-cols-4">
+                  {previewItems.map((item, i) => (
+                    <button
+                      key={item.url}
+                      onClick={() => toggleItemSelected(i)}
+                      aria-pressed={item.selected}
+                      className={`relative aspect-square overflow-hidden rounded-lg border-2 transition-opacity ${
+                        item.selected ? "border-indigo-600" : "border-transparent opacity-50"
                       }`}
                     >
-                      {item.selected && (
-                        <Check size={12} strokeWidth={2.5} className="text-on-accent" />
-                      )}
-                    </span>
-                  </button>
-                ))}
+                      <img
+                        src={item.url}
+                        alt={`Photo ${i + 1}`}
+                        className="h-full w-full object-cover"
+                      />
+                      <span
+                        className={`absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full ring-1 ring-white/60 ${
+                          item.selected ? "bg-indigo-600" : "bg-black/40"
+                        }`}
+                      >
+                        {item.selected && (
+                          <Check size={14} strokeWidth={2.5} className="text-on-accent" />
+                        )}
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
-            )}
-          </div>
-          <div className="flex flex-col items-center gap-3 pb-4">
-            <div className="flex gap-4">
+            </>
+          )}
+          <div className="shrink-0 border-t border-ivory/10 bg-camera-bg px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+            <div className="mx-auto flex w-full max-w-2xl gap-3">
               <button
                 onClick={handleRetry}
                 disabled={isSaving}
-                className="inline-flex items-center gap-2 rounded-full bg-ivory/15 px-6 py-3 text-ivory backdrop-blur transition-colors hover:bg-ivory/25 disabled:opacity-50"
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-ivory/15 px-5 py-3.5 text-base text-ivory transition-colors hover:bg-ivory/25 active:bg-ivory/30 disabled:opacity-50"
               >
-                <RotateCcw size={18} strokeWidth={1.75} />
-                Try again
+                {source === "library" ? (
+                  <>
+                    <X size={18} strokeWidth={1.75} />
+                    Cancel
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw size={18} strokeWidth={1.75} />
+                    Try again
+                  </>
+                )}
               </button>
               <button
                 onClick={handleSave}
-                disabled={isSaving}
-                className="inline-flex items-center gap-2 rounded-full bg-navy-900 px-6 py-3 font-medium text-ivory transition-colors hover:bg-navy-900/90 disabled:opacity-50"
+                disabled={isSaving || selectedCount === 0}
+                className="inline-flex flex-[1.5] items-center justify-center gap-2 rounded-full bg-indigo-600 px-5 py-3.5 text-base font-medium text-on-accent transition-colors hover:bg-indigo-500 active:bg-indigo-500 disabled:opacity-50"
               >
                 {isSaving ? (
                   <>
@@ -1738,8 +1763,7 @@ export default function Camera({
                   <>
                     <UploadCloud size={18} strokeWidth={1.75} />
                     Save
-                    {previewItems.length > 1 &&
-                      ` (${previewItems.filter((p) => p.selected).length})`}
+                    {previewItems.length > 1 && ` (${selectedCount})`}
                   </>
                 )}
               </button>
