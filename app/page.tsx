@@ -37,7 +37,7 @@ export default async function Home() {
   }
 
   const { eventName, date, slug } = config;
-  // Per-event (its photo-limit tier's own limit, or the account-wide
+  // Per-event (its plan's photo limit, or an admin's own, or the account-wide
   // default, how many photos it holds so far, and an admin's own
   // upload-policy choice) -- fresh calls every load, not part of the
   // long-lived event cookie. See fetchEventPhotoQuota's own comment for why.

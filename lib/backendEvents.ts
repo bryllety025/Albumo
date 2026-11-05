@@ -166,9 +166,8 @@ export async function fetchEventZip(slug: string, signal?: AbortSignal): Promise
  */
 export type PhotoQuota = { limit: number | null; used: number };
 
-// The event's own photo-limit tier's limit, or (no such tier -- the usual
-// case before tiers existed, or while the account has none) the account-wide
-// default, plus how many photos the event holds right now. albumo-backend
+// The event's photo limit (an admin's own number for it, else its plan's, else
+// the account-wide default), plus how many photos the event holds right now. albumo-backend
 // enforces the limit when an upload is registered; this is what lets the
 // camera show it, and stop offering to take a photo that would only be
 // refused.
@@ -314,7 +313,7 @@ export type RegisterUploadResult =
 // their dashboard, and records this device's uploaderToken against it so it
 // can later prove ownership to delete it (see deleteGuestUpload below).
 // Best-effort for every failure except the ones that mean the upload was
-// refused: a 409 means either the event has a guest-limit tier and this is a
+// refused: a 409 means either the event has a guest cap and this is a
 // brand-new device arriving after it was already reached, or the event
 // already holds as many photos as its photo limit allows (told apart by the
 // body's `code`). albumo-backend has already undone the upload in both cases
